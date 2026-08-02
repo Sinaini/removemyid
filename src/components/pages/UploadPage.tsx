@@ -4,6 +4,7 @@ import { ArrowRight, File as FileIcon, Upload, X, AlertCircle } from "lucide-rea
 import type { UploadedFile } from "../../types";
 import StepLayout from "../layout/StepLayout";
 import { trackEvent } from "../../lib/analytics";
+import { generateId } from "../../lib/id";
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
 
@@ -39,7 +40,7 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
       const file = acceptedFiles[0];
       if (file) {
         setError(null);
-        setUploadedFile({ file, id: crypto.randomUUID() });
+        setUploadedFile({ file, id: generateId() });
       }
     },
     []

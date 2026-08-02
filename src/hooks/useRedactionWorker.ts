@@ -5,6 +5,7 @@ import type {
   RedactionResponse,
   RedactionResult,
 } from "../types";
+import { generateId } from "../lib/id";
 
 interface PendingRequest {
   resolve: (result: RedactionResult) => void;
@@ -57,7 +58,7 @@ export function useRedactionWorker() {
           return;
         }
 
-        const requestId = crypto.randomUUID();
+        const requestId = generateId();
         pendingRef.current.set(requestId, { resolve, reject });
 
         const request: RedactionRequest = { requestId, text, options, excludedIds };
