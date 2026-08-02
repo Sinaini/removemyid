@@ -1,27 +1,31 @@
-import { Download, Eye, RotateCcw, ShieldCheck } from "lucide-react";
+import { Download, Eye, RotateCcw, ShieldCheck, X } from "lucide-react";
 import type { RedactionSummary, PIICategory, RedactedItem } from "../../types";
 import { CATEGORY_META, CATEGORY_ORDER, categoryLabel } from "../../lib/redaction/categoryMeta";
 
 interface RedactionSummaryPanelProps {
   summary: RedactionSummary;
+  isUpdating: boolean;
   onDownload: () => void;
   onPreview: () => void;
   onReset: () => void;
+  onRemoveItem: (id: string) => void;
 }
 
-function groupItems(items: RedactedItem[]): Partial<Record<PIICategory, string[]>> {
-  const grouped: Partial<Record<PIICategory, string[]>> = {};
+function groupItems(items: RedactedItem[]): Partial<Record<PIICategory, RedactedItem[]>> {
+  const grouped: Partial<Record<PIICategory, RedactedItem[]>> = {};
   for (const item of items) {
-    (grouped[item.category] ??= []).push(item.text);
+    (grouped[item.category] ??= []).push(item);
   }
   return grouped;
 }
 
 export default function RedactionSummaryPanel({
   summary,
+  isUpdating,
   onDownload,
   onPreview,
   onReset,
+  onRemoveItem,
 }: RedactionSummaryPanelProps) {
   const grouped = groupItems(summary.items);
   const categories = CATEGORY_ORDER.filter((category) => summary.counts[category] > 0);
@@ -37,7 +41,9 @@ export default function RedactionSummaryPanel({
             Found {summary.total} item{summary.total === 1 ? "" : "s"} to redact
           </p>
           <p className="text-xs text-ink-400">
-            Here's exactly what was replaced with [REDACTED]
+            {isUpdating
+              ? "Updating…"
+              : "Here's exactly what was replaced with [REDACTED]. Remove an item to keep it un-redacted."}
           </p>
         </div>
       </div>
@@ -60,15 +66,24 @@ export default function RedactionSummaryPanel({
                     {count}
                   </span>
                 </div>
-                <ul className="mt-2 ml-6 max-h-40 space-y-1 overflow-y-auto pr-1">
-                  {values.map((value, i) => (
+                <ul className="mt-2 ml-6 max-h-40 space-y-3 overflow-y-auto pr-1">
+                  {values.map((item) => (
                     <li
-                      key={`${value}-${i}`}
+                      key={item.id}
                       className="flex items-center gap-2 truncate font-mono text-xs text-ink-400"
                     >
-                      <span className="truncate text-ink-300">{value}</span>
+                      <span className="truncate text-ink-300">{item.text}</span>
                       <span className="shrink-0 text-ink-600">→</span>
                       <span className="shrink-0 text-signal-400">[REDACTED]</span>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveItem(item.id)}
+                        disabled={isUpdating}
+                        title="Keep this un-redacted"
+                        className="ml-auto shrink-0 rounded p-0.5 text-ink-500 transition hover:bg-ink-800 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <X className="h-3.5 w-3.5" strokeWidth={2} />
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -79,24 +94,24 @@ export default function RedactionSummaryPanel({
       )}
 
       <div className="mt-6 space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onDownload}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-ink-950 transition hover:bg-signal-400"
-          >
-            <Download className="h-4 w-4" strokeWidth={2} />
-            Download redacted file
-          </button>
-          <button
-            type="button"
-            onClick={onPreview}
-            className="flex items-center justify-center gap-2 rounded-lg border border-ink-700 px-4 py-2.5 text-sm font-medium text-ink-300 transition hover:bg-ink-800 hover:text-ink-50"
-          >
-            <Eye className="h-4 w-4" strokeWidth={2} />
-            Preview
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onPreview}
+          disabled={isUpdating}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-ink-700 px-4 py-2.5 text-sm font-medium text-ink-300 transition hover:bg-ink-800 hover:text-ink-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Eye className="h-4 w-4" strokeWidth={2} />
+          Preview
+        </button>
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={isUpdating}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-signal-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" strokeWidth={2} />
+          Download redacted file
+        </button>
         <button
           type="button"
           onClick={onReset}

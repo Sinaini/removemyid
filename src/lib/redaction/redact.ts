@@ -16,7 +16,18 @@ import {
 import { findPeople, findPlaces } from "./nlp";
 import { ALL_CATEGORIES, defaultRedactionOptions } from "./options";
 
-const REDACTED = "[REDACTED]";
+export const REDACTED = "[REDACTED]";
+
+// Identifies a specific match occurrence so a user can remove one instance
+// from the results list without affecting identical text found elsewhere.
+// `page` distinguishes PDF pages, whose start/end offsets are page-local
+// text positions and would otherwise collide across pages.
+export function matchId(
+  match: Pick<PIIMatch, "category" | "start" | "end">,
+  page?: number
+): string {
+  return `${page ?? "t"}:${match.category}:${match.start}:${match.end}`;
+}
 
 const DETECTORS: Record<PIICategory, (text: string) => PIIMatch[]> = {
   email: findEmails,
@@ -60,6 +71,32 @@ function buildFlexiblePhoneRegex(value: string): RegExp | null {
   return new RegExp(`\\+?(?:\\d{1,3}[\\s.-]*)?${spaced}`, "gi");
 }
 
+// A multi-word value is often written in reverse order elsewhere in the same
+// document — "123 Main St" vs. "St Main 123". When the typed value has more
+// than one word, also match the words in reverse order so both forms get
+// redacted.
+function buildLiteralRegex(value: string): RegExp {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return new RegExp(escapeRegExp(value), "gi");
+
+  const forward = words.map(escapeRegExp).join("\\s+");
+  const reversed = [...words].reverse().map(escapeRegExp).join("\\s+");
+  return new RegExp(`(?:${forward}|${reversed})`, "gi");
+}
+
+// Names specifically also get each individual word as its own alternative —
+// typing "John Doe" should also catch a bare "John" or "Doe" elsewhere in
+// the document, on top of "John Doe" and "Doe John".
+function buildNameRegex(value: string): RegExp {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return new RegExp(escapeRegExp(value), "gi");
+
+  const forward = words.map(escapeRegExp).join("\\s+");
+  const reversed = [...words].reverse().map(escapeRegExp).join("\\s+");
+  const alternatives = [forward, reversed, ...words.map(escapeRegExp)];
+  return new RegExp(`(?:${alternatives.join("|")})`, "gi");
+}
+
 function findLiteralMatches(
   text: string,
   value: string,
@@ -71,7 +108,9 @@ function findLiteralMatches(
   const regex =
     category === "phone"
       ? buildFlexiblePhoneRegex(trimmed)
-      : new RegExp(escapeRegExp(trimmed), "gi");
+      : category === "person"
+        ? buildNameRegex(trimmed)
+        : buildLiteralRegex(trimmed);
   if (!regex) return [];
 
   const matches: PIIMatch[] = [];
@@ -151,14 +190,32 @@ export function emptySummary(): RedactionSummary {
   };
 }
 
-export function summarize(matches: PIIMatch[]): RedactionSummary {
+export function summarize(matches: PIIMatch[], page?: number): RedactionSummary {
   const summary = emptySummary();
   for (const match of matches) {
     summary.counts[match.category] += 1;
     summary.total += 1;
-    summary.items.push({ category: match.category, text: match.text });
+    summary.items.push({
+      id: matchId(match, page),
+      category: match.category,
+      text: match.text,
+      start: match.start,
+      end: match.end,
+    });
   }
   return summary;
+}
+
+// Drops matches the user has removed from the results list (identified by
+// matchId) so they're excluded from both the summary and the redacted
+// output, effectively "un-redacting" that occurrence.
+export function excludeMatches(
+  matches: PIIMatch[],
+  excludedIds?: ReadonlySet<string>,
+  page?: number
+): PIIMatch[] {
+  if (!excludedIds || excludedIds.size === 0) return matches;
+  return matches.filter((match) => !excludedIds.has(matchId(match, page)));
 }
 
 export function mergeSummaries(summaries: RedactionSummary[]): RedactionSummary {
@@ -175,9 +232,10 @@ export function mergeSummaries(summaries: RedactionSummary[]): RedactionSummary 
 
 export function redactText(
   text: string,
-  options?: RedactionOptions
+  options?: RedactionOptions,
+  excludedIds?: ReadonlySet<string>
 ): RedactionResult {
-  const kept = findAllMatches(text, options);
+  const kept = excludeMatches(findAllMatches(text, options), excludedIds);
 
   let redactedText = "";
   let cursor = 0;

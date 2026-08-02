@@ -28,7 +28,7 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
         setError(
           reason.code === "file-too-large"
             ? "That file is larger than 25 MB. Try a smaller file."
-            : "Unsupported file type. Please upload a .txt, .csv, or .pdf file."
+            : "Unsupported file type. Please upload a .txt, .csv, .pdf, .jpg, .png, or .webp file."
         );
         setUploadedFile(null);
         return;
@@ -51,6 +51,9 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
       "text/plain": [".txt"],
       "text/csv": [".csv"],
       "application/pdf": [".pdf"],
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/png": [".png"],
+      "image/webp": [".webp"],
     },
   });
 
@@ -86,7 +89,7 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
               : "Drag & drop a file, or click to browse"}
           </p>
           <p className="mt-1 text-sm text-ink-400">
-            Supports .txt, .csv, and .pdf — up to 25 MB
+            Supports .txt, .csv, .pdf, .jpg, .png, and .webp — up to 25 MB
           </p>
         </div>
       ) : (
@@ -118,7 +121,7 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
           <button
             type="button"
             onClick={() => onContinue(uploadedFile)}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-ink-950 transition hover:bg-signal-400"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-signal-400 active:scale-[0.98]"
           >
             Continue
             <ArrowRight className="h-4 w-4" strokeWidth={2} />

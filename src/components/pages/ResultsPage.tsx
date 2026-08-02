@@ -2,28 +2,35 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import type { RedactionSummary } from "../../types";
 import StepLayout from "../layout/StepLayout";
 import RedactionSummaryPanel from "../landing/RedactionSummaryPanel";
+import FeedbackButton from "../shared/FeedbackButton";
 
 interface ResultsPageProps {
   isProcessing: boolean;
+  isUpdating: boolean;
   error: string | null;
   summary: RedactionSummary | null;
   onDownload: () => void;
   onPreview: () => void;
   onRetry: () => void;
   onStartOver: () => void;
+  onBack: () => void;
+  onRemoveItem: (id: string) => void;
 }
 
 export default function ResultsPage({
   isProcessing,
+  isUpdating,
   error,
   summary,
   onDownload,
   onPreview,
   onRetry,
   onStartOver,
+  onBack,
+  onRemoveItem,
 }: ResultsPageProps) {
   return (
-    <StepLayout step={3} title="Results">
+    <StepLayout step={3} title="Results" onBack={onBack}>
       {isProcessing && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-ink-800 bg-ink-900/40 px-6 py-16 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-signal-400" strokeWidth={2} />
@@ -39,7 +46,7 @@ export default function ResultsPage({
             <button
               type="button"
               onClick={onRetry}
-              className="rounded-lg bg-signal-500 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-signal-400"
+              className="rounded-lg bg-signal-500 px-4 py-2 text-sm font-medium text-accent-ink transition hover:bg-signal-400 active:scale-[0.98]"
             >
               Try again
             </button>
@@ -55,12 +62,20 @@ export default function ResultsPage({
       )}
 
       {!isProcessing && !error && summary && (
-        <RedactionSummaryPanel
-          summary={summary}
-          onDownload={onDownload}
-          onPreview={onPreview}
-          onReset={onStartOver}
-        />
+        <>
+          <RedactionSummaryPanel
+            summary={summary}
+            isUpdating={isUpdating}
+            onDownload={onDownload}
+            onPreview={onPreview}
+            onReset={onStartOver}
+            onRemoveItem={onRemoveItem}
+          />
+
+          <div className="mt-6 text-center">
+            <FeedbackButton source="results" />
+          </div>
+        </>
       )}
     </StepLayout>
   );

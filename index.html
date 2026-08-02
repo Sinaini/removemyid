@@ -2,13 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+    <link rel="icon" href="/favicon/favicon.ico" />
+    <link rel="manifest" href="/favicon/site.webmanifest" />
+    <meta name="theme-color" content="#05070d" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
       content="RemoveMyID redacts personal information from your files entirely in your browser. No uploads, no servers — your files never leave your device."
     />
     <title>RemoveMyID — Redact PII from your files, 100% in your browser</title>
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=%VITE_GA_MEASUREMENT_ID%"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      // Page views are sent manually on route change (see src/lib/analytics.ts)
+      // since this is a client-side-routed SPA — the default automatic
+      // page_view would only ever fire once, on the initial full page load.
+      gtag('config', '%VITE_GA_MEASUREMENT_ID%', { send_page_view: false });
+    </script>
+
+    <script>
+      (function () {
+        var stored = localStorage.getItem("theme");
+        var theme =
+          stored === "dark" || stored === "light"
+            ? stored
+            : window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
