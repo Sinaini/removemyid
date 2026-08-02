@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { useForm, ValidationError } from "@formspree/react";
 import { Send, CheckCircle2 } from "lucide-react";
+import { trackEvent } from "../../lib/analytics";
 
 const FORMSPREE_FORM_ID = import.meta.env.VITE_FORMSPREE_FORM_ID;
 
@@ -16,6 +18,12 @@ interface FeedbackFormProps {
 
 export default function FeedbackForm({ source }: FeedbackFormProps) {
   const [state, handleSubmit] = useForm<FeedbackFields>(FORMSPREE_FORM_ID);
+
+  useEffect(() => {
+    if (state.succeeded) {
+      trackEvent("feedback_submitted", { source });
+    }
+  }, [state.succeeded, source]);
 
   if (state.succeeded) {
     return (

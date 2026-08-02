@@ -1,5 +1,6 @@
 import ThemeToggle from "./ThemeToggle";
 import GithubIcon from "../shared/GithubIcon";
+import { trackEvent } from "../../lib/analytics";
 
 interface HeaderProps {
   isLanding: boolean;
@@ -29,20 +30,17 @@ export default function Header({ isLanding, onLogoClick, onGetStarted }: HeaderP
         </button>
 
         <div className="flex items-center gap-4">
-          {isLanding && (
-            <nav className="hidden items-center gap-6 text-sm text-ink-300 sm:flex">
-              
-              <a
-                href="https://github.com/Sinaini/removemyid"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 transition hover:text-ink-50"
-              >
-                <GithubIcon className="h-4 w-4" />
-                
-              </a>
-            </nav>
-          )}
+          <nav className="hidden items-center gap-6 text-sm text-ink-300 sm:flex">
+            <a
+              href="https://github.com/Sinaini/removemyid"
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackEvent("github_link_clicked", { location: "header" })}
+              className="flex items-center gap-1.5 transition hover:text-ink-50"
+            >
+              <GithubIcon className="h-4 w-4" />
+            </a>
+          </nav>
 
           {isLanding && (
             <a
@@ -50,6 +48,7 @@ export default function Header({ isLanding, onLogoClick, onGetStarted }: HeaderP
               target="_blank"
               rel="noreferrer"
               aria-label="View source on GitHub"
+              onClick={() => trackEvent("github_link_clicked", { location: "header" })}
               className="text-ink-300 transition hover:text-ink-50 sm:hidden"
             >
               <GithubIcon className="h-5 w-5" />

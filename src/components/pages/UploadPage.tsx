@@ -3,6 +3,7 @@ import { useDropzone, type FileRejection } from "react-dropzone";
 import { ArrowRight, File as FileIcon, Upload, X, AlertCircle } from "lucide-react";
 import type { UploadedFile } from "../../types";
 import StepLayout from "../layout/StepLayout";
+import { trackEvent } from "../../lib/analytics";
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
 
@@ -25,6 +26,7 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
     (acceptedFiles: File[], fileRejections: FileRejection[]) => {
       if (fileRejections.length > 0) {
         const reason = fileRejections[0].errors[0];
+        trackEvent("file_rejected", { reason: reason.code });
         setError(
           reason.code === "file-too-large"
             ? "That file is larger than 25 MB. Try a smaller file."

@@ -4,28 +4,38 @@ import Header from "./components/layout/Header";
 import Footer from "./components/layout/Footer";
 import LandingPage from "./components/pages/LandingPage";
 import RedactFunnel from "./components/pages/RedactFunnel";
-import { trackPageView } from "./lib/analytics";
+import ResultsRoute from "./components/pages/ResultsRoute";
+import { trackPageView, trackEvent } from "./lib/analytics";
+import { useRedactionFunnel } from "./hooks/useRedactionFunnel";
 
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const isLanding = location.pathname === "/";
+  const funnel = useRedactionFunnel();
 
   useEffect(() => {
     trackPageView(location.pathname + location.search);
   }, [location.pathname, location.search]);
+
+  const startFunnel = () => {
+    funnel.resetFunnel();
+    trackEvent("funnel_started");
+    navigate("/redact");
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
       <Header
         isLanding={isLanding}
         onLogoClick={() => navigate("/")}
-        onGetStarted={() => navigate("/redact")}
+        onGetStarted={startFunnel}
       />
       <main className="flex-1">
         <Routes>
-          <Route path="/" element={<LandingPage onGetStarted={() => navigate("/redact")} />} />
-          <Route path="/redact" element={<RedactFunnel />} />
+          <Route path="/" element={<LandingPage onGetStarted={startFunnel} />} />
+          <Route path="/redact" element={<RedactFunnel funnel={funnel} />} />
+          <Route path="/results" element={<ResultsRoute funnel={funnel} />} />
         </Routes>
       </main>
       <Footer />

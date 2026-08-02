@@ -1,8 +1,10 @@
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, Star } from "lucide-react";
 import type { RedactionSummary } from "../../types";
 import StepLayout from "../layout/StepLayout";
 import RedactionSummaryPanel from "../landing/RedactionSummaryPanel";
 import FeedbackButton from "../shared/FeedbackButton";
+import ShareButton from "../shared/ShareButton";
+import { trackEvent } from "../../lib/analytics";
 
 interface ResultsPageProps {
   isProcessing: boolean;
@@ -72,7 +74,25 @@ export default function ResultsPage({
             onRemoveItem={onRemoveItem}
           />
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 flex items-center gap-3 rounded-2xl border border-signal-400/20 bg-signal-400/5 px-5 py-4">
+            <Star className="h-5 w-5 shrink-0 text-signal-400" strokeWidth={2} />
+            <p className="text-sm text-ink-300">
+              Enjoying RemoveMyID?{" "}
+              <a
+                href="https://github.com/Sinaini/removemyid"
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => trackEvent("github_link_clicked", { location: "results_banner" })}
+                className="font-medium text-signal-400 underline underline-offset-2 transition hover:text-signal-300"
+              >
+                Give us a star on GitHub
+              </a>{" "}
+              — it helps other people find the project.
+            </p>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <ShareButton />
             <FeedbackButton source="results" />
           </div>
         </>
