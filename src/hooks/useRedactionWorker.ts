@@ -20,17 +20,18 @@ export function useRedactionWorker() {
       new URL("../workers/redaction.worker.ts", import.meta.url),
       { type: "module" }
     );
+    const pending = pendingRef.current;
 
     worker.onmessage = (event: MessageEvent<RedactionResponse>) => {
       const response = event.data;
-      const pending = pendingRef.current.get(response.requestId);
-      if (!pending) return;
-      pendingRef.current.delete(response.requestId);
+      const request = pending.get(response.requestId);
+      if (!request) return;
+      pending.delete(response.requestId);
 
       if (response.ok) {
-        pending.resolve(response.result);
+        request.resolve(response.result);
       } else {
-        pending.reject(new Error(response.error));
+        request.reject(new Error(response.error));
       }
     };
 
@@ -39,12 +40,16 @@ export function useRedactionWorker() {
     return () => {
       worker.terminate();
       workerRef.current = null;
-      pendingRef.current.clear();
+      pending.clear();
     };
   }, []);
 
   const redact = useCallback(
-    (text: string, options?: RedactionOptions): Promise<RedactionResult> => {
+    (
+      text: string,
+      options?: RedactionOptions,
+      excludedIds?: string[]
+    ): Promise<RedactionResult> => {
       return new Promise((resolve, reject) => {
         const worker = workerRef.current;
         if (!worker) {
@@ -55,7 +60,7 @@ export function useRedactionWorker() {
         const requestId = crypto.randomUUID();
         pendingRef.current.set(requestId, { resolve, reject });
 
-        const request: RedactionRequest = { requestId, text, options };
+        const request: RedactionRequest = { requestId, text, options, excludedIds };
         worker.postMessage(request);
       });
     },

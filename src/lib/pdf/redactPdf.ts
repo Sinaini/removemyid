@@ -11,6 +11,7 @@ import {
   findAllMatches,
   summarize,
   mergeSummaries,
+  excludeMatches,
 } from "../redaction/redact";
 import type { PIIMatch, RedactionOptions, RedactionSummary } from "../../types";
 
@@ -129,7 +130,8 @@ export interface ProcessedPdf {
 
 export async function redactPdfFile(
   file: File,
-  options?: RedactionOptions
+  options?: RedactionOptions,
+  excludedIds?: ReadonlySet<string>
 ): Promise<ProcessedPdf> {
   const bytes = await file.arrayBuffer();
   const pdf = await getDocument({ data: bytes }).promise;
@@ -139,8 +141,8 @@ export async function redactPdfFile(
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const { text, items, styles } = await extractPageText(page);
-    const matches = findAllMatches(text, options);
-    pageSummaries.push(summarize(matches));
+    const matches = excludeMatches(findAllMatches(text, options), excludedIds, pageNum);
+    pageSummaries.push(summarize(matches, pageNum));
 
     const viewport = page.getViewport({ scale: RENDER_SCALE });
     const canvas = document.createElement("canvas");

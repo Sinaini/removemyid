@@ -96,7 +96,7 @@ export default function ConfigurePage({
         type="button"
         onClick={onSubmit}
         disabled={!anyEnabled}
-        className="mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-ink-950 transition hover:bg-signal-400 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-signal-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
       >
         Redact this file
         <ArrowRight className="h-4 w-4" strokeWidth={2} />

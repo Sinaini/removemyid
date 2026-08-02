@@ -3,6 +3,26 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "description": "Privacy-first, 100% client-side PII redaction tool for text, CSV, PDF, and image files.",
+  "author": "Sinaini",
+  "license": "MIT",
+  "homepage": "https://removemyid.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sinaini/removemyid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sinaini/removemyid/issues"
+  },
+  "keywords": [
+    "pii",
+    "redaction",
+    "privacy",
+    "pdf",
+    "client-side",
+    "react",
+    "vite"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -10,15 +30,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@formspree/react": "^3.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "compromise": "^14.16.0",
+    "country-flag-icons": "^1.6.20",
     "lucide-react": "^1.28.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-dropzone": "^19.3.0",
-    "tailwindcss": "^4.3.3"
+    "react-router-dom": "^7.18.2",
+    "tailwindcss": "^4.3.3",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

@@ -1,7 +1,13 @@
 @import "tailwindcss";
+@import "@fontsource-variable/space-grotesk/wght.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 
 @theme {
-  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter Variable", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* Deep navy/slate base with a privacy-green accent */
   --color-ink-950: #05070d;
@@ -21,6 +27,37 @@
   --color-signal-400: #3ed6a5;
   --color-signal-300: #7fe8c4;
   --color-signal-100: #d5faed;
+
+  /* Text sitting on a signal-colored button/badge needs to stay dark for
+     contrast regardless of theme, so it doesn't invert with ink-950. */
+  --color-accent-ink: #05070d;
+}
+
+/* Light theme: mirrors the dark scale rather than introducing a new
+   palette, so every existing ink-scale usage just flips without
+   per-component changes. The signal scale is separately darkened where it
+   is used as text/icon color, since the light-mode greens need more
+   contrast on white. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-ink-950: #ffffff;
+  --color-ink-900: #f6f7fb;
+  --color-ink-800: #e7eaf5;
+  --color-ink-700: #ccd2e6;
+  --color-ink-600: #a3adc9;
+  --color-ink-500: #7580a3;
+  --color-ink-400: #4a5578;
+  --color-ink-300: #2a3252;
+  --color-ink-200: #1b2138;
+  --color-ink-100: #121729;
+  --color-ink-50: #05070d;
+
+  --color-signal-600: #0a7a54;
+  --color-signal-500: #0d9f6e;
+  --color-signal-400: #0f8f63;
+  --color-signal-300: #14b886;
+  --color-signal-100: #d5faed;
 }
 
 @layer base {
@@ -29,7 +66,14 @@
   }
 
   body {
-    @apply bg-ink-950 text-ink-200 antialiased;
+    @apply bg-ink-950 text-ink-200 antialiased transition-colors duration-200;
     font-feature-settings: "cv11", "ss01";
+  }
+
+  h1,
+  h2,
+  h3,
+  button {
+    font-family: var(--font-display);
   }
 }

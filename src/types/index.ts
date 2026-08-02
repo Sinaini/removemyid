@@ -1,4 +1,10 @@
-export type SupportedFileType = "text/plain" | "text/csv" | "application/pdf";
+export type SupportedFileType =
+  | "text/plain"
+  | "text/csv"
+  | "application/pdf"
+  | "image/jpeg"
+  | "image/png"
+  | "image/webp";
 
 export type UploadStatus = "idle" | "accepted" | "rejected";
 
@@ -25,8 +31,11 @@ export interface PIIMatch {
 }
 
 export interface RedactedItem {
+  id: string;
   category: PIICategory;
   text: string;
+  start: number;
+  end: number;
 }
 
 export interface RedactionSummary {
@@ -55,6 +64,7 @@ export interface RedactionRequest {
   requestId: string;
   text: string;
   options?: RedactionOptions;
+  excludedIds?: string[];
 }
 
 export type RedactionResponse =
