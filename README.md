@@ -13,7 +13,7 @@
 
 RemoveMyID is a 100% client-side PII redaction tool. Drop in a `.txt`, `.csv`, `.pdf`, or image file, choose what to scrub, and get a redacted copy back — no upload, no backend, no third party ever sees the file. Every byte of processing happens locally — in a Web Worker for text, and via in-browser OCR for images — using regex and lightweight NLP running in your own browser tab.
 
-🔗 **Live demo:** [removemyid.vercel.app](https://removemyid.vercel.app)
+🔗 **Live demo:** [removemyid.com](https://www.removemyid.com)
 
 ## Why
 
