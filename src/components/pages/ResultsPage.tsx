@@ -1,0 +1,67 @@
+import { AlertCircle, Loader2 } from "lucide-react";
+import type { RedactionSummary } from "../../types";
+import StepLayout from "../layout/StepLayout";
+import RedactionSummaryPanel from "../landing/RedactionSummaryPanel";
+
+interface ResultsPageProps {
+  isProcessing: boolean;
+  error: string | null;
+  summary: RedactionSummary | null;
+  onDownload: () => void;
+  onPreview: () => void;
+  onRetry: () => void;
+  onStartOver: () => void;
+}
+
+export default function ResultsPage({
+  isProcessing,
+  error,
+  summary,
+  onDownload,
+  onPreview,
+  onRetry,
+  onStartOver,
+}: ResultsPageProps) {
+  return (
+    <StepLayout step={3} title="Results">
+      {isProcessing && (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-ink-800 bg-ink-900/40 px-6 py-16 text-center">
+          <Loader2 className="h-6 w-6 animate-spin text-signal-400" strokeWidth={2} />
+          <p className="text-sm text-ink-300">Redacting your file…</p>
+        </div>
+      )}
+
+      {!isProcessing && error && (
+        <div className="rounded-2xl border border-red-900/50 bg-red-950/20 px-6 py-8 text-center">
+          <AlertCircle className="mx-auto h-6 w-6 text-red-400" strokeWidth={2} />
+          <p className="mt-3 text-sm text-red-300">{error}</p>
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-lg bg-signal-500 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-signal-400"
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={onStartOver}
+              className="rounded-lg border border-ink-700 px-4 py-2 text-sm font-medium text-ink-300 transition hover:bg-ink-800 hover:text-ink-50"
+            >
+              Start over
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isProcessing && !error && summary && (
+        <RedactionSummaryPanel
+          summary={summary}
+          onDownload={onDownload}
+          onPreview={onPreview}
+          onReset={onStartOver}
+        />
+      )}
+    </StepLayout>
+  );
+}
