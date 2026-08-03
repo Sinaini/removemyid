@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local scratch/sample files (may contain real personal data used for testing)
+/test/

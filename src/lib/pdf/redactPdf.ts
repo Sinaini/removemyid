@@ -7,6 +7,8 @@ import {
   type PageTextData,
   type PdfTextItem,
 } from "./extractPageText";
+import { getOcrWorker } from "../images/ocrSetup";
+import { flattenWords, ocrBoxesForMatch } from "../images/ocrText";
 import {
   findAllMatches,
   summarize,
@@ -146,8 +148,6 @@ export async function redactPdfFile(
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const { text, items, styles } = await extractPageText(page);
-    const matches = excludeMatches(findAllMatches(text, options), excludedIds, pageNum);
-    pageSummaries.push(summarize(matches, pageNum));
 
     const baseViewport = page.getViewport({ scale: 1 });
     const maxScale = Math.sqrt(MAX_CANVAS_AREA / (baseViewport.width * baseViewport.height));
@@ -169,9 +169,33 @@ export async function redactPdfFile(
     }).promise;
 
     ctx.fillStyle = "#000000";
-    for (const match of matches) {
-      for (const box of boxesForMatch(ctx, match, items, styles, viewport)) {
-        ctx.fillRect(box.x, box.y, box.width, box.height);
+
+    // Some documents (scans, or PDFs whose generator outlines glyphs as
+    // vector paths instead of embedding real text/fonts — common for some
+    // Hebrew report exporters) have no text layer at all: pdf.js's text
+    // extraction comes back empty even though the page clearly shows text.
+    // Fall back to OCR-ing the page we just rasterized, the same way image
+    // uploads are handled.
+    if (items.length === 0) {
+      const worker = await getOcrWorker();
+      const { data } = await worker.recognize(canvas, {}, { blocks: true });
+      const { text: ocrText, words } = flattenWords(data);
+      const matches = excludeMatches(findAllMatches(ocrText, options), excludedIds, pageNum);
+      pageSummaries.push(summarize(matches, pageNum));
+
+      for (const match of matches) {
+        for (const box of ocrBoxesForMatch(match, words)) {
+          ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+        }
+      }
+    } else {
+      const matches = excludeMatches(findAllMatches(text, options), excludedIds, pageNum);
+      pageSummaries.push(summarize(matches, pageNum));
+
+      for (const match of matches) {
+        for (const box of boxesForMatch(ctx, match, items, styles, viewport)) {
+          ctx.fillRect(box.x, box.y, box.width, box.height);
+        }
       }
     }
 

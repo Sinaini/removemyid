@@ -42,12 +42,15 @@ const DETECTORS: Record<PIICategory, (text: string) => PIIMatch[]> = {
 
 // Regex-based categories are precise, format-driven matches, so they take
 // priority over NLP guesses when spans overlap (e.g. compromise tagging a
-// digit run inside an email as a place).
+// digit run inside an email as a place). SSN ranks above phone/creditCard
+// specifically because its "XXX-XX-XXXX" shape is a strict subset of the much
+// more permissive phone-candidate pattern — an SSN always also looks like a
+// valid phone number, so on an identical span the more specific match wins.
 const CATEGORY_PRIORITY: Record<PIICategory, number> = {
   email: 0,
-  phone: 1,
-  creditCard: 2,
-  ssn: 3,
+  ssn: 1,
+  phone: 2,
+  creditCard: 3,
   date: 4,
   age: 5,
   person: 6,
