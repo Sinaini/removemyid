@@ -1,5 +1,5 @@
 import "./pdfjsSetup";
-import { getDocument, Util } from "pdfjs-dist";
+import { getDocument, Util } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { PageViewport } from "pdfjs-dist";
 import { PDFDocument as PdfLibDocument } from "pdf-lib";
 import {
