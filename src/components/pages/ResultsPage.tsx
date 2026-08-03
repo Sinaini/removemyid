@@ -10,6 +10,7 @@ interface ResultsPageProps {
   isProcessing: boolean;
   isUpdating: boolean;
   error: string | null;
+  errorDetail: string | null;
   summary: RedactionSummary | null;
   onDownload: () => void;
   onPreview: () => void;
@@ -23,6 +24,7 @@ export default function ResultsPage({
   isProcessing,
   isUpdating,
   error,
+  errorDetail,
   summary,
   onDownload,
   onPreview,
@@ -44,6 +46,16 @@ export default function ResultsPage({
         <div className="rounded-2xl border border-red-900/50 bg-red-950/20 px-6 py-8 text-center">
           <AlertCircle className="mx-auto h-6 w-6 text-red-400" strokeWidth={2} />
           <p className="mt-3 text-sm text-red-300">{error}</p>
+          {errorDetail && (
+            <details className="mt-3 text-left">
+              <summary className="cursor-pointer text-xs text-ink-400 hover:text-ink-300">
+                Technical details (tap to expand, useful if reporting this)
+              </summary>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-ink-950/60 p-3 text-left text-xs text-ink-400">
+                {errorDetail}
+              </pre>
+            </details>
+          )}
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button
               type="button"

@@ -16,6 +16,11 @@ import {
 import type { PIIMatch, RedactionOptions, RedactionSummary } from "../../types";
 
 const RENDER_SCALE = 2;
+// Mobile Safari (and WebKit-based iOS browsers generally) refuse to allocate
+// canvases much beyond ~4096x4096 and silently fail/produce a blank surface
+// past that, rather than throwing a descriptive error. Clamp the rasterized
+// resolution per-page so a large/high-DPI page doesn't exceed that ceiling.
+const MAX_CANVAS_AREA = 4096 * 4096;
 const BOX_PADDING = 2;
 const ASCENT_RATIO = 0.82;
 const BOX_HEIGHT_RATIO = 1.05;
@@ -144,7 +149,10 @@ export async function redactPdfFile(
     const matches = excludeMatches(findAllMatches(text, options), excludedIds, pageNum);
     pageSummaries.push(summarize(matches, pageNum));
 
-    const viewport = page.getViewport({ scale: RENDER_SCALE });
+    const baseViewport = page.getViewport({ scale: 1 });
+    const maxScale = Math.sqrt(MAX_CANVAS_AREA / (baseViewport.width * baseViewport.height));
+    const scale = Math.min(RENDER_SCALE, maxScale);
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
@@ -170,8 +178,8 @@ export async function redactPdfFile(
     const pngBytes = await canvasToPngBytes(canvas);
     const pngImage = await outDoc.embedPng(pngBytes);
 
-    const pageWidthPt = viewport.width / RENDER_SCALE;
-    const pageHeightPt = viewport.height / RENDER_SCALE;
+    const pageWidthPt = viewport.width / scale;
+    const pageHeightPt = viewport.height / scale;
     const outPage = outDoc.addPage([pageWidthPt, pageHeightPt]);
     outPage.drawImage(pngImage, {
       x: 0,

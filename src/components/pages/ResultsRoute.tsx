@@ -18,6 +18,7 @@ export default function ResultsRoute({ funnel }: ResultsRouteProps) {
       isProcessing={funnel.isProcessing}
       isUpdating={funnel.isUpdating}
       error={funnel.processingError}
+      errorDetail={funnel.processingErrorDetail}
       summary={funnel.summary}
       onDownload={funnel.handleDownload}
       onPreview={funnel.handlePreview}

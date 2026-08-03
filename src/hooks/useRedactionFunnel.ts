@@ -19,6 +19,7 @@ export function useRedactionFunnel() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [processingErrorDetail, setProcessingErrorDetail] = useState<string | null>(null);
   const [summary, setSummary] = useState<RedactionSummary | null>(null);
   const [pendingDownload, setPendingDownload] = useState<PendingDownload | null>(null);
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
@@ -34,6 +35,7 @@ export function useRedactionFunnel() {
     setIsProcessing(false);
     setIsUpdating(false);
     setProcessingError(null);
+    setProcessingErrorDetail(null);
     setSummary(null);
     setPendingDownload(null);
     setExcludedIds(new Set());
@@ -58,6 +60,7 @@ export function useRedactionFunnel() {
       setPendingDownload(null);
     }
     setProcessingError(null);
+    setProcessingErrorDetail(null);
 
     const fileType = file.file.type || "unknown";
 
@@ -105,7 +108,19 @@ export function useRedactionFunnel() {
             ? err.message
             : "Something went wrong while redacting that file."
         );
-        trackEvent("redaction_failed", { file_type: fileType });
+        // Not PII — this is a JS engine/parser error (name, message, stack),
+        // shown so a failure on a device we can't remote-debug (e.g. a
+        // locked-down mobile browser) can still be diagnosed from a screenshot.
+        setProcessingErrorDetail(
+          err instanceof Error
+            ? `${err.name}: ${err.message}\n${err.stack ?? ""}`.trim()
+            : String(err)
+        );
+        trackEvent("redaction_failed", {
+          file_type: fileType,
+          error_message:
+            err instanceof Error ? err.message.slice(0, 100) : "unknown",
+        });
       }
     } finally {
       if (silent) {
@@ -162,6 +177,7 @@ export function useRedactionFunnel() {
     isProcessing,
     isUpdating,
     processingError,
+    processingErrorDetail,
     summary,
     clearFile,
     resetFunnel,
