@@ -4,7 +4,9 @@ import StepLayout from "../layout/StepLayout";
 import RedactionSummaryPanel from "../landing/RedactionSummaryPanel";
 import FeedbackButton from "../shared/FeedbackButton";
 import ShareButton from "../shared/ShareButton";
+import WarningPanel from "../shared/WarningPanel";
 import { trackEvent } from "../../lib/analytics";
+import type { RedactionWarning } from "../../hooks/useRedactionFunnel";
 
 interface ResultsPageProps {
   isProcessing: boolean;
@@ -12,6 +14,8 @@ interface ResultsPageProps {
   error: string | null;
   errorDetail: string | null;
   summary: RedactionSummary | null;
+  warnings: readonly RedactionWarning[];
+  staleOutput: boolean;
   onDownload: () => void;
   onPreview: () => void;
   onRetry: () => void;
@@ -26,6 +30,8 @@ export default function ResultsPage({
   error,
   errorDetail,
   summary,
+  warnings,
+  staleOutput,
   onDownload,
   onPreview,
   onRetry,
@@ -80,11 +86,15 @@ export default function ResultsPage({
           <RedactionSummaryPanel
             summary={summary}
             isUpdating={isUpdating}
+            staleOutput={staleOutput}
             onDownload={onDownload}
             onPreview={onPreview}
             onReset={onStartOver}
             onRemoveItem={onRemoveItem}
+            onRetry={onRetry}
           />
+
+          <WarningPanel warnings={warnings} />
 
           <div className="mt-6 flex items-center gap-3 rounded-2xl border border-signal-400/20 bg-signal-400/5 px-5 py-4">
             <Star className="h-5 w-5 shrink-0 text-signal-400" strokeWidth={2} />

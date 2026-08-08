@@ -19,5 +19,10 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/workers", "src/lib/redaction", "src/types"]
+  "include": ["src/workers", "src/lib/redaction", "src/lib/pipeline", "src/types"],
+  // categoryMeta.ts is the one file in src/lib/redaction that is UI-only (it
+  // maps categories to lucide-react icons). The worker never imports it, and
+  // compiling it here would require pulling React/DOM types into the worker
+  // project for no reason.
+  "exclude": ["src/**/*.test.ts", "src/lib/redaction/categoryMeta.ts"]
 }

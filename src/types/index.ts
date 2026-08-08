@@ -17,6 +17,7 @@ export type PIICategory =
   | "email"
   | "phone"
   | "creditCard"
+  | "accountNumber"
   | "ssn"
   | "person"
   | "place"
@@ -47,6 +48,13 @@ export interface RedactionSummary {
 export interface RedactionResult {
   redactedText: string;
   summary: RedactionSummary;
+  /**
+   * The matches actually redacted, in ascending order. Returned alongside the
+   * rendered text because callers that rebuild a structured format (CSV cells,
+   * and later DOCX runs) need the spans, not a pre-joined string — and because
+   * the review screen highlights them in place.
+   */
+  matches: PIIMatch[];
 }
 
 // Per-category redaction preference. When `exactValue` is set, it replaces

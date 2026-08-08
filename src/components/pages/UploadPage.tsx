@@ -31,7 +31,7 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
         setError(
           reason.code === "file-too-large"
             ? "That file is larger than 25 MB. Try a smaller file."
-            : "Unsupported file type. Please upload a .txt, .csv, .pdf, .jpg, .png, or .webp file."
+            : "Unsupported file type. Please upload a text, CSV, JSON, Markdown, HTML, PDF, or image file."
         );
         setUploadedFile(null);
         return;
@@ -50,9 +50,16 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
     onDrop,
     multiple: false,
     maxSize: MAX_FILE_SIZE_BYTES,
+    // Extensions carry the real filtering here. Browsers report inconsistent
+    // MIME types for these (Excel calls a .csv "application/vnd.ms-excel",
+    // drag-and-drop often supplies nothing at all), and the actual format is
+    // determined from the file's own bytes after upload — see lib/files/sniff.ts.
     accept: {
-      "text/plain": [".txt"],
-      "text/csv": [".csv"],
+      "text/plain": [".txt", ".text", ".log"],
+      "text/csv": [".csv", ".tsv"],
+      "application/json": [".json"],
+      "text/markdown": [".md", ".markdown"],
+      "text/html": [".html", ".htm"],
       "application/pdf": [".pdf"],
       "image/jpeg": [".jpg", ".jpeg"],
       "image/png": [".png"],
@@ -92,7 +99,8 @@ export default function UploadPage({ onBack, onContinue }: UploadPageProps) {
               : "Drag & drop a file, or click to browse"}
           </p>
           <p className="mt-1 text-sm text-ink-400">
-            Supports .txt, .csv, .pdf, .jpg, .png, and .webp — up to 25 MB
+            Supports .txt, .csv, .json, .md, .html, .pdf, .jpg, .png and .webp —
+            up to 25 MB
           </p>
         </div>
       ) : (

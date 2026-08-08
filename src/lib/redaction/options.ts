@@ -1,25 +1,22 @@
 import type { PIICategory, RedactionOptions } from "../../types";
+import { ALL_CATEGORIES, CATEGORY_DEFS } from "./registry";
 
-export const ALL_CATEGORIES: PIICategory[] = [
-  "email",
-  "phone",
-  "creditCard",
-  "ssn",
-  "person",
-  "place",
-  "date",
-  "age",
-];
+// Re-exported so the many existing importers of ALL_CATEGORIES from this
+// module keep working; the list itself is now derived from the registry rather
+// than hand-maintained here.
+export { ALL_CATEGORIES };
 
 export function defaultRedactionOptions(): RedactionOptions {
-  return {
-    email: { enabled: true, exactValue: "" },
-    phone: { enabled: true, exactValue: "" },
-    creditCard: { enabled: true, exactValue: "" },
-    ssn: { enabled: true, exactValue: "" },
-    person: { enabled: true, exactValue: "" },
-    place: { enabled: true, exactValue: "" },
-    date: { enabled: true, exactValue: "" },
-    age: { enabled: true, exactValue: "" },
-  };
+  const options = {} as RedactionOptions;
+  for (const category of ALL_CATEGORIES) {
+    options[category] = {
+      enabled: CATEGORY_DEFS[category].defaultEnabled,
+      exactValue: "",
+    };
+  }
+  return options;
+}
+
+export function isCategory(value: string): value is PIICategory {
+  return Object.hasOwn(CATEGORY_DEFS, value);
 }

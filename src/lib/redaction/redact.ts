@@ -5,18 +5,21 @@ import type {
   RedactionResult,
   RedactionSummary,
 } from "../../types";
-import {
-  findEmails,
-  findPhones,
-  findCreditCards,
-  findSSNs,
-  findDates,
-  findAges,
-} from "./patterns";
-import { findPeople, findPlaces } from "./nlp";
-import { ALL_CATEGORIES, defaultRedactionOptions } from "./options";
+import { ALL_CATEGORIES, CATEGORY_DEFS } from "./registry";
+import { defaultRedactionOptions } from "./options";
+import { resolveOverlaps } from "./overlap";
+import { findLiteralMatches } from "./literal";
 
 export const REDACTED = "[REDACTED]";
+
+/**
+ * Where a match's offsets are measured. A scanned-looking PDF page is now read
+ * from its text layer *and* by OCR, and those are two independent coordinate
+ * spaces — without this discriminator, offset 120 in the text layer and offset
+ * 120 in the OCR output would produce the same id and the user excluding one
+ * would silently un-redact the other.
+ */
+export type MatchSource = "text" | "ocr";
 
 // Identifies a specific match occurrence so a user can remove one instance
 // from the results list without affecting identical text found elsewhere.
@@ -24,129 +27,10 @@ export const REDACTED = "[REDACTED]";
 // text positions and would otherwise collide across pages.
 export function matchId(
   match: Pick<PIIMatch, "category" | "start" | "end">,
-  page?: number
+  page?: number,
+  source: MatchSource = "text"
 ): string {
-  return `${page ?? "t"}:${match.category}:${match.start}:${match.end}`;
-}
-
-const DETECTORS: Record<PIICategory, (text: string) => PIIMatch[]> = {
-  email: findEmails,
-  phone: findPhones,
-  creditCard: findCreditCards,
-  ssn: findSSNs,
-  date: findDates,
-  age: findAges,
-  person: findPeople,
-  place: findPlaces,
-};
-
-// Regex-based categories are precise, format-driven matches, so they take
-// priority over NLP guesses when spans overlap (e.g. compromise tagging a
-// digit run inside an email as a place). SSN ranks above phone/creditCard
-// specifically because its "XXX-XX-XXXX" shape is a strict subset of the much
-// more permissive phone-candidate pattern — an SSN always also looks like a
-// valid phone number, so on an identical span the more specific match wins.
-const CATEGORY_PRIORITY: Record<PIICategory, number> = {
-  email: 0,
-  ssn: 1,
-  phone: 2,
-  creditCard: 3,
-  date: 4,
-  age: 5,
-  person: 6,
-  place: 7,
-};
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// A phone number a user types into the exact-value field (e.g. "0543990303")
-// rarely matches the file's formatting byte-for-byte (e.g. "054-3990303",
-// "+972 54 399 0303"). Reduce the typed value to its digits and rebuild a
-// pattern that tolerates any spaces/dots/dashes between them, plus an
-// optional "+"/country-code prefix, so formatting differences don't matter.
-function buildFlexiblePhoneRegex(value: string): RegExp | null {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length < 4) return null;
-
-  const spaced = digits.split("").join("[\\s.-]*");
-  return new RegExp(`\\+?(?:\\d{1,3}[\\s.-]*)?${spaced}`, "gi");
-}
-
-// A multi-word value is often written in reverse order elsewhere in the same
-// document — "123 Main St" vs. "St Main 123". When the typed value has more
-// than one word, also match the words in reverse order so both forms get
-// redacted.
-function buildLiteralRegex(value: string): RegExp {
-  const words = value.split(/\s+/).filter(Boolean);
-  if (words.length < 2) return new RegExp(escapeRegExp(value), "gi");
-
-  const forward = words.map(escapeRegExp).join("\\s+");
-  const reversed = [...words].reverse().map(escapeRegExp).join("\\s+");
-  return new RegExp(`(?:${forward}|${reversed})`, "gi");
-}
-
-// Names specifically also get each individual word as its own alternative —
-// typing "John Doe" should also catch a bare "John" or "Doe" elsewhere in
-// the document, on top of "John Doe" and "Doe John".
-function buildNameRegex(value: string): RegExp {
-  const words = value.split(/\s+/).filter(Boolean);
-  if (words.length < 2) return new RegExp(escapeRegExp(value), "gi");
-
-  const forward = words.map(escapeRegExp).join("\\s+");
-  const reversed = [...words].reverse().map(escapeRegExp).join("\\s+");
-  const alternatives = [forward, reversed, ...words.map(escapeRegExp)];
-  return new RegExp(`(?:${alternatives.join("|")})`, "gi");
-}
-
-function findLiteralMatches(
-  text: string,
-  value: string,
-  category: PIICategory
-): PIIMatch[] {
-  const trimmed = value.trim();
-  if (!trimmed) return [];
-
-  const regex =
-    category === "phone"
-      ? buildFlexiblePhoneRegex(trimmed)
-      : category === "person"
-        ? buildNameRegex(trimmed)
-        : buildLiteralRegex(trimmed);
-  if (!regex) return [];
-
-  const matches: PIIMatch[] = [];
-  for (const match of text.matchAll(regex)) {
-    if (match.index === undefined) continue;
-    matches.push({
-      category,
-      start: match.index,
-      end: match.index + match[0].length,
-      text: match[0],
-    });
-  }
-  return matches;
-}
-
-function dedupeOverlaps(matches: PIIMatch[]): PIIMatch[] {
-  const sorted = [...matches].sort((a, b) => {
-    if (a.start !== b.start) return a.start - b.start;
-    const lengthDiff = b.end - b.start - (a.end - a.start);
-    if (lengthDiff !== 0) return lengthDiff;
-    return CATEGORY_PRIORITY[a.category] - CATEGORY_PRIORITY[b.category];
-  });
-
-  const kept: PIIMatch[] = [];
-  let lastEnd = -1;
-
-  for (const match of sorted) {
-    if (match.start < lastEnd) continue;
-    kept.push(match);
-    lastEnd = match.end;
-  }
-
-  return kept;
+  return `${page ?? "t"}:${source}:${match.category}:${match.start}:${match.end}`;
 }
 
 export function findAllMatches(
@@ -158,7 +42,7 @@ export function findAllMatches(
 
   for (const category of ALL_CATEGORIES) {
     const opt = opts[category];
-    if (!opt.enabled) continue;
+    if (!opt?.enabled) continue;
 
     if (opt.exactValue.trim()) {
       const values = opt.exactValue
@@ -169,37 +53,30 @@ export function findAllMatches(
         allMatches.push(...findLiteralMatches(text, value, category));
       }
     } else {
-      allMatches.push(...DETECTORS[category](text));
+      allMatches.push(...CATEGORY_DEFS[category].detect(text));
     }
   }
 
-  return dedupeOverlaps(allMatches);
+  return resolveOverlaps(allMatches, text);
 }
 
 export function emptySummary(): RedactionSummary {
-  return {
-    counts: {
-      email: 0,
-      phone: 0,
-      creditCard: 0,
-      ssn: 0,
-      person: 0,
-      place: 0,
-      date: 0,
-      age: 0,
-    },
-    total: 0,
-    items: [],
-  };
+  const counts = {} as Record<PIICategory, number>;
+  for (const category of ALL_CATEGORIES) counts[category] = 0;
+  return { counts, total: 0, items: [] };
 }
 
-export function summarize(matches: PIIMatch[], page?: number): RedactionSummary {
+export function summarize(
+  matches: PIIMatch[],
+  page?: number,
+  source: MatchSource = "text"
+): RedactionSummary {
   const summary = emptySummary();
   for (const match of matches) {
     summary.counts[match.category] += 1;
     summary.total += 1;
     summary.items.push({
-      id: matchId(match, page),
+      id: matchId(match, page, source),
       category: match.category,
       text: match.text,
       start: match.start,
@@ -215,17 +92,20 @@ export function summarize(matches: PIIMatch[], page?: number): RedactionSummary 
 export function excludeMatches(
   matches: PIIMatch[],
   excludedIds?: ReadonlySet<string>,
-  page?: number
+  page?: number,
+  source: MatchSource = "text"
 ): PIIMatch[] {
   if (!excludedIds || excludedIds.size === 0) return matches;
-  return matches.filter((match) => !excludedIds.has(matchId(match, page)));
+  return matches.filter((match) => !excludedIds.has(matchId(match, page, source)));
 }
 
 export function mergeSummaries(summaries: RedactionSummary[]): RedactionSummary {
   const merged = emptySummary();
   for (const summary of summaries) {
-    for (const category of Object.keys(merged.counts) as PIICategory[]) {
-      merged.counts[category] += summary.counts[category];
+    // Iterate the registry, not the incoming object's own keys — a summary
+    // that arrived from an older worker build could be missing one.
+    for (const category of ALL_CATEGORIES) {
+      merged.counts[category] += summary.counts[category] ?? 0;
     }
     merged.total += summary.total;
     merged.items.push(...summary.items);
@@ -249,5 +129,5 @@ export function redactText(
   }
   redactedText += text.slice(cursor);
 
-  return { redactedText, summary: summarize(kept) };
+  return { redactedText, summary: summarize(kept), matches: kept };
 }

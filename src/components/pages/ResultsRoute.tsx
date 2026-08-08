@@ -20,6 +20,8 @@ export default function ResultsRoute({ funnel }: ResultsRouteProps) {
       error={funnel.processingError}
       errorDetail={funnel.processingErrorDetail}
       summary={funnel.summary}
+      warnings={funnel.warnings}
+      staleOutput={funnel.staleOutput}
       onDownload={funnel.handleDownload}
       onPreview={funnel.handlePreview}
       onRetry={funnel.handleRetry}

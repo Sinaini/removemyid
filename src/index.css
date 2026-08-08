@@ -31,6 +31,29 @@
   /* Text sitting on a signal-colored button/badge needs to stay dark for
      contrast regardless of theme, so it doesn't invert with ink-950. */
   --color-accent-ink: #05070d;
+
+  /* Advisory (not-an-error) surfaces: "this page looked scanned", "OCR was
+     uncertain", "only these values will be redacted". Distinct from danger so
+     a caveat doesn't read as a failure. */
+  --color-warn-500: #d99a24;
+  --color-warn-400: #f0b429;
+  --color-warn-300: #f7d070;
+
+  /* Errors previously used raw Tailwind red-400/red-950 directly, which is
+     near-invisible on a white background in light theme. */
+  --color-danger-500: #d33d3d;
+  --color-danger-400: #f26a6a;
+  --color-danger-300: #f79a9a;
+
+  /* Match highlighting is grouped rather than per-category: with 18
+     categories, 18 hues are neither distinguishable nor accessible. Colour
+     carries the group; the category is conveyed by icon and accessible name,
+     so meaning is never colour-only. */
+  --color-cat-contact: #4f9dff;
+  --color-cat-financial: #2fbf9b;
+  --color-cat-identifier: #b47cf0;
+  --color-cat-location: #f0913f;
+  --color-cat-other: #8a94b8;
 }
 
 /* Light theme: mirrors the dark scale rather than introducing a new
@@ -58,6 +81,23 @@
   --color-signal-400: #0f8f63;
   --color-signal-300: #14b886;
   --color-signal-100: #d5faed;
+
+  /* Warn/danger/category hues are darkened for use as text and as fills
+     behind dark text on white. The dark-theme values above are tuned for
+     light text on near-black and fail contrast if reused here. */
+  --color-warn-500: #a16207;
+  --color-warn-400: #b45309;
+  --color-warn-300: #d97706;
+
+  --color-danger-500: #b91c1c;
+  --color-danger-400: #c62828;
+  --color-danger-300: #dc2626;
+
+  --color-cat-contact: #1d5fbf;
+  --color-cat-financial: #0d7f65;
+  --color-cat-identifier: #7a3fb0;
+  --color-cat-location: #b4611a;
+  --color-cat-other: #4a5578;
 }
 
 @layer base {
@@ -75,5 +115,28 @@
   h3,
   button {
     font-family: var(--font-display);
+  }
+
+  /* The app previously shipped with no focus styles at all, so keyboard users
+     had no way to tell where they were. One base rule covers every existing
+     button, link, input and the new review-screen controls. :focus-visible
+     (not :focus) so a mouse click doesn't leave a ring behind. */
+  :focus-visible {
+    outline: 2px solid var(--color-signal-400);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Respect the OS "reduce motion" setting: the app animates spinners, scroll
+     positions and highlight flashes, all of which are vestibular triggers. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

@@ -5,10 +5,17 @@ import { CATEGORY_META, CATEGORY_ORDER, categoryLabel } from "../../lib/redactio
 interface RedactionSummaryPanelProps {
   summary: RedactionSummary;
   isUpdating: boolean;
+  /**
+   * True when regenerating after an exclusion failed, so the blob we hold no
+   * longer matches the list on screen. The download must be blocked rather than
+   * silently handing over a mismatched file.
+   */
+  staleOutput?: boolean;
   onDownload: () => void;
   onPreview: () => void;
   onReset: () => void;
   onRemoveItem: (id: string) => void;
+  onRetry?: () => void;
 }
 
 function groupItems(items: RedactedItem[]): Partial<Record<PIICategory, RedactedItem[]>> {
@@ -22,11 +29,14 @@ function groupItems(items: RedactedItem[]): Partial<Record<PIICategory, Redacted
 export default function RedactionSummaryPanel({
   summary,
   isUpdating,
+  staleOutput = false,
   onDownload,
   onPreview,
   onReset,
   onRemoveItem,
+  onRetry,
 }: RedactionSummaryPanelProps) {
+  const actionsDisabled = isUpdating || staleOutput;
   const grouped = groupItems(summary.items);
   const categories = CATEGORY_ORDER.filter((category) => summary.counts[category] > 0);
 
@@ -48,6 +58,27 @@ export default function RedactionSummaryPanel({
             </p>
           </div>
         </div>
+
+        {staleOutput && (
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-danger-500/40 bg-danger-500/5 px-4 py-3"
+          >
+            <p className="text-sm text-ink-100">
+              That change couldn't be applied, so the file below no longer matches
+              this list. Downloading is disabled until it's rebuilt.
+            </p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-2 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-200 transition hover:bg-ink-800 hover:text-ink-50"
+              >
+                Rebuild the file
+              </button>
+            )}
+          </div>
+        )}
 
         {categories.length > 0 && (
           <div className="mt-5 space-y-4 border-t border-ink-800 pt-4">
@@ -79,7 +110,7 @@ export default function RedactionSummaryPanel({
                         <button
                           type="button"
                           onClick={() => onRemoveItem(item.id)}
-                          disabled={isUpdating}
+                          disabled={actionsDisabled}
                           title="Keep this un-redacted"
                           className="ml-auto shrink-0 rounded p-0.5 text-ink-500 transition hover:bg-ink-800 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
@@ -98,7 +129,7 @@ export default function RedactionSummaryPanel({
           <button
             type="button"
             onClick={onPreview}
-            disabled={isUpdating}
+            disabled={actionsDisabled}
             className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-ink-300 transition hover:bg-ink-800 hover:text-ink-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Eye className="h-4 w-4" strokeWidth={2} />
@@ -107,7 +138,7 @@ export default function RedactionSummaryPanel({
           <button
             type="button"
             onClick={onDownload}
-            disabled={isUpdating}
+            disabled={actionsDisabled}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-signal-500 px-4 py-2.5 text-sm font-medium text-accent-ink transition hover:bg-signal-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="h-4 w-4" strokeWidth={2} />

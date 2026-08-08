@@ -1,14 +1,15 @@
 import "./pdfjsSetup";
-import { getDocument, Util } from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { PageViewport } from "pdfjs-dist";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { PDFDocument as PdfLibDocument } from "pdf-lib";
-import {
-  extractPageText,
-  type PageTextData,
-  type PdfTextItem,
-} from "./extractPageText";
+import { extractPageText } from "./extractPageText";
+import { assessTextLayer, shouldOcr } from "./textDensity";
+import { fillQuad } from "./geometry";
+import { canvasMeasurer, quadsForMatch } from "./boxes";
+import { encodePage, pickEncoding } from "./encodePage";
 import { getOcrWorker } from "../images/ocrSetup";
 import { flattenWords, ocrBoxesForMatch } from "../images/ocrText";
+import { createClampedCanvas, releaseCanvas } from "../images/canvas";
+import { throwIfAborted } from "../pipeline/abort";
 import {
   findAllMatches,
   summarize,
@@ -18,204 +19,229 @@ import {
 import type { PIIMatch, RedactionOptions, RedactionSummary } from "../../types";
 
 const RENDER_SCALE = 2;
-// Mobile Safari (and WebKit-based iOS browsers generally) refuse to allocate
-// canvases much beyond ~4096x4096 and silently fail/produce a blank surface
-// past that, rather than throwing a descriptive error. Clamp the rasterized
-// resolution per-page so a large/high-DPI page doesn't exceed that ceiling.
-const MAX_CANVAS_AREA = 4096 * 4096;
-const BOX_PADDING = 2;
-const ASCENT_RATIO = 0.82;
-const BOX_HEIGHT_RATIO = 1.05;
-// Horizontal padding as a fraction of font size, not a flat pixel value, so
-// it scales with text size and with RENDER_SCALE.
-const HORIZONTAL_PAD_RATIO = 0.18;
 
-interface CanvasBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export type PdfWarningCode =
+  | "scanned-page"
+  | "low-text-density"
+  | "bidi-whole-run"
+  | "output-large";
 
-// Uses the canvas's own font metrics (measureText) to find where a substring
-// starts/ends within an item, rather than assuming uniform glyph width. Since
-// the substituted browser font never matches the PDF's embedded font exactly,
-// we additionally rescale by the ratio between pdf.js's authoritative full
-// item width and our measured full-string width, correcting for that
-// mismatch. Any residual error is absorbed by BOX_PADDING — over-covering by
-// a couple pixels is the safe failure mode for a redaction tool.
-function measurePartialWidths(
-  ctx: CanvasRenderingContext2D,
-  item: PdfTextItem,
-  styles: PageTextData["styles"],
-  viewport: PageViewport,
-  charStart: number,
-  charEnd: number
-): { startPx: number; endPx: number } {
-  const fontFamily = styles[item.fontName]?.fontFamily || "sans-serif";
-  const fontSizePx = item.height * viewport.scale;
-  ctx.font = `${fontSizePx}px ${fontFamily}`;
-
-  const measuredFullWidth = ctx.measureText(item.str).width || 1;
-  const realFullWidth = item.width * viewport.scale;
-  const correction = realFullWidth / measuredFullWidth;
-  const horizontalPad = fontSizePx * HORIZONTAL_PAD_RATIO;
-
-  const rawStartPx = ctx.measureText(item.str.slice(0, charStart)).width * correction;
-  const rawEndPx = ctx.measureText(item.str.slice(0, charEnd)).width * correction;
-
-  return {
-    startPx: rawStartPx - horizontalPad,
-    endPx: rawEndPx + horizontalPad,
-  };
-}
-
-function itemToCanvasBox(
-  ctx: CanvasRenderingContext2D,
-  item: PdfTextItem,
-  styles: PageTextData["styles"],
-  viewport: PageViewport,
-  charStart: number,
-  charEnd: number
-): CanvasBox {
-  const combined = Util.transform(viewport.transform, item.transform);
-  const [, , , , e, f] = combined;
-  const canvasHeight = item.height * viewport.scale;
-
-  const { startPx, endPx } = measurePartialWidths(
-    ctx,
-    item,
-    styles,
-    viewport,
-    charStart,
-    charEnd
-  );
-
-  return {
-    x: e + startPx - BOX_PADDING,
-    y: f - canvasHeight * ASCENT_RATIO - BOX_PADDING,
-    width: endPx - startPx + BOX_PADDING * 2,
-    height: canvasHeight * BOX_HEIGHT_RATIO + BOX_PADDING * 2,
-  };
-}
-
-function boxesForMatch(
-  ctx: CanvasRenderingContext2D,
-  match: PIIMatch,
-  items: PdfTextItem[],
-  styles: PageTextData["styles"],
-  viewport: PageViewport
-): CanvasBox[] {
-  return items
-    .filter((item) => item.start < match.end && item.end > match.start)
-    .map((item) => {
-      const overlapStart = Math.max(item.start, match.start);
-      const overlapEnd = Math.min(item.end, match.end);
-      return itemToCanvasBox(
-        ctx,
-        item,
-        styles,
-        viewport,
-        overlapStart - item.start,
-        overlapEnd - item.start
-      );
-    });
-}
-
-async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/png")
-  );
-  if (!blob) throw new Error("Failed to rasterize page to an image");
-  return new Uint8Array(await blob.arrayBuffer());
+export interface PdfWarning {
+  code: PdfWarningCode;
+  page?: number;
+  detail?: string;
 }
 
 export interface ProcessedPdf {
   blob: Blob;
   summary: RedactionSummary;
+  warnings: PdfWarning[];
+}
+
+export interface RedactPdfOptions {
+  signal?: AbortSignal;
+  onProgress?: (event: { stage: string; current: number; total: number }) => void;
+}
+
+/**
+ * Identity of a *reported* value, used to stop the text-layer and OCR passes
+ * both listing the same visible thing. Whitespace and case are normalised
+ * because OCR routinely differs from the text layer on both.
+ */
+function reportKey(category: string, text: string): string {
+  return `${category}:${text.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 
 export async function redactPdfFile(
   file: File,
   options?: RedactionOptions,
-  excludedIds?: ReadonlySet<string>
+  excludedIds?: ReadonlySet<string>,
+  runOptions: RedactPdfOptions = {}
 ): Promise<ProcessedPdf> {
+  const { signal, onProgress } = runOptions;
+
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
-  const outDoc = await PdfLibDocument.create();
-  const pageSummaries: RedactionSummary[] = [];
+  const loadingTask = getDocument({ data: bytes });
+  // Without this, cancelling leaves pdf.js parsing in its own worker long after
+  // the UI has moved on.
+  const onAbort = () => void loadingTask.destroy();
+  signal?.addEventListener("abort", onAbort, { once: true });
 
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const { text, items, styles } = await extractPageText(page);
+  const warnings: PdfWarning[] = [];
 
-    const baseViewport = page.getViewport({ scale: 1 });
-    const maxScale = Math.sqrt(MAX_CANVAS_AREA / (baseViewport.width * baseViewport.height));
-    const scale = Math.min(RENDER_SCALE, maxScale);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Could not acquire a 2D canvas context");
+  try {
+    const pdf = await loadingTask.promise;
+    const outDoc = await PdfLibDocument.create();
+    const pageSummaries: RedactionSummary[] = [];
 
-    // "print" intent avoids pdf.js's interactive rendering path, which can
-    // stall indefinitely on a backgrounded/inactive tab.
-    await page.render({
-      canvas: null,
-      canvasContext: ctx,
-      viewport,
-      intent: "print",
-    }).promise;
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      throwIfAborted(signal);
+      onProgress?.({ stage: "Reading page", current: pageNum, total: pdf.numPages });
 
-    ctx.fillStyle = "#000000";
+      const page = await pdf.getPage(pageNum);
+      let canvas: HTMLCanvasElement | null = null;
 
-    // Some documents (scans, or PDFs whose generator outlines glyphs as
-    // vector paths instead of embedding real text/fonts — common for some
-    // Hebrew report exporters) have no text layer at all: pdf.js's text
-    // extraction comes back empty even though the page clearly shows text.
-    // Fall back to OCR-ing the page we just rasterized, the same way image
-    // uploads are handled.
-    if (items.length === 0) {
-      const worker = await getOcrWorker();
-      const { data } = await worker.recognize(canvas, {}, { blocks: true });
-      const { text: ocrText, words } = flattenWords(data);
-      const matches = excludeMatches(findAllMatches(ocrText, options), excludedIds, pageNum);
-      pageSummaries.push(summarize(matches, pageNum));
+      try {
+        const baseViewport = page.getViewport({ scale: 1 });
+        // The clamp lives in createClampedCanvas, so the render scale is chosen
+        // against the same ceiling the canvas will actually be allocated with.
+        const wanted = page.getViewport({ scale: RENDER_SCALE });
+        const clamped = createClampedCanvas(wanted.width, wanted.height);
+        canvas = clamped.canvas;
+        const ctx = clamped.ctx;
 
-      for (const match of matches) {
-        for (const box of ocrBoxesForMatch(match, words)) {
-          ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+        const scale = RENDER_SCALE * clamped.scale;
+        const viewport = page.getViewport({ scale });
+
+        const { text, items, styles } = await extractPageText(page, viewport);
+        throwIfAborted(signal);
+
+        // "print" intent avoids pdf.js's interactive rendering path, which can
+        // stall indefinitely on a backgrounded/inactive tab.
+        const renderTask = page.render({
+          canvas: null,
+          canvasContext: ctx,
+          viewport,
+          intent: "print",
+        });
+        const cancelRender = () => renderTask.cancel();
+        signal?.addEventListener("abort", cancelRender, { once: true });
+        try {
+          await renderTask.promise;
+        } finally {
+          signal?.removeEventListener("abort", cancelRender);
         }
-      }
-    } else {
-      const matches = excludeMatches(findAllMatches(text, options), excludedIds, pageNum);
-      pageSummaries.push(summarize(matches, pageNum));
+        throwIfAborted(signal);
 
-      for (const match of matches) {
-        for (const box of boxesForMatch(ctx, match, items, styles, viewport)) {
-          ctx.fillRect(box.x, box.y, box.width, box.height);
+        ctx.fillStyle = "#000000";
+        const measurer = canvasMeasurer(ctx);
+
+        const density = assessTextLayer(items, viewport);
+
+        // Text-layer matches. Retained so the OCR pass below can tell which of
+        // its findings are genuinely new.
+        let pageTextMatches: PIIMatch[] = [];
+        if (items.length > 0) {
+          const matches = excludeMatches(
+            findAllMatches(text, options),
+            excludedIds,
+            pageNum,
+            "text"
+          );
+          pageTextMatches = matches;
+          pageSummaries.push(summarize(matches, pageNum, "text"));
+
+          let anyWholeRun = false;
+          for (const match of matches) {
+            const { quads, usedWholeRun } = quadsForMatch(
+              measurer,
+              match,
+              items,
+              styles
+            );
+            if (usedWholeRun) anyWholeRun = true;
+            for (const quad of quads) fillQuad(ctx, quad);
+          }
+          if (anyWholeRun) {
+            warnings.push({
+              code: "bidi-whole-run",
+              page: pageNum,
+              detail:
+                "Right-to-left text was covered a whole run at a time, which can black out slightly more than the matched value.",
+            });
+          }
         }
+
+        // OCR matches, run *in addition to* the text layer rather than only when
+        // the text layer is empty. The old `items.length === 0` gate meant a
+        // scanned page carrying a single stamped header skipped OCR entirely and
+        // the whole page went unredacted.
+        if (shouldOcr(density)) {
+          throwIfAborted(signal);
+          onProgress?.({
+            stage: `Reading page ${pageNum} with OCR`,
+            current: pageNum,
+            total: pdf.numPages,
+          });
+
+          const worker = await getOcrWorker();
+          const { data } = await worker.recognize(canvas, {}, { blocks: true });
+          throwIfAborted(signal);
+
+          const { text: ocrText, words } = flattenWords(data);
+          const matches = excludeMatches(
+            findAllMatches(ocrText, options),
+            excludedIds,
+            pageNum,
+            "ocr"
+          );
+
+          // Every OCR match gets a box — over-covering is the safe direction, and
+          // the two passes read different coordinate spaces so there is no
+          // reliable way to know a text-layer box already covered this glyph.
+          for (const match of matches) {
+            for (const box of ocrBoxesForMatch(match, words)) {
+              ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+            }
+          }
+
+          // The *summary*, though, must not list the same visible value twice
+          // just because both passes found it — that inflates the counts and
+          // makes the results list look broken. Report only what OCR found that
+          // the text layer did not.
+          const alreadyReported = new Set(
+            pageTextMatches.map((m) => reportKey(m.category, m.text))
+          );
+          const novel = matches.filter(
+            (m) => !alreadyReported.has(reportKey(m.category, m.text))
+          );
+          pageSummaries.push(summarize(novel, pageNum, "ocr"));
+
+          warnings.push({
+            code: "scanned-page",
+            page: pageNum,
+            detail:
+              "Some pages had little or no selectable text, so they were read with OCR. OCR can miss text that is blurry, handwritten or heavily styled — check the result.",
+          });
+        }
+
+        const encoding = await encodePage(canvas, pickEncoding(canvas, density.looksScanned));
+        const image =
+          encoding.kind === "jpeg"
+            ? await outDoc.embedJpg(encoding.bytes)
+            : await outDoc.embedPng(encoding.bytes);
+
+        const pageWidthPt = baseViewport.width;
+        const pageHeightPt = baseViewport.height;
+        const outPage = outDoc.addPage([pageWidthPt, pageHeightPt]);
+        outPage.drawImage(image, {
+          x: 0,
+          y: 0,
+          width: pageWidthPt,
+          height: pageHeightPt,
+        });
+      } finally {
+        // A 4096x4096 canvas is ~67MB. Without releasing each page's surface,
+        // a long document accumulates hundreds of megabytes and crashes the tab
+        // on mobile Safari.
+        releaseCanvas(canvas);
+        page.cleanup();
       }
     }
 
-    const pngBytes = await canvasToPngBytes(canvas);
-    const pngImage = await outDoc.embedPng(pngBytes);
+    const outBytes = await outDoc.save();
+    const blob = new Blob([new Uint8Array(outBytes)], { type: "application/pdf" });
 
-    const pageWidthPt = viewport.width / scale;
-    const pageHeightPt = viewport.height / scale;
-    const outPage = outDoc.addPage([pageWidthPt, pageHeightPt]);
-    outPage.drawImage(pngImage, {
-      x: 0,
-      y: 0,
-      width: pageWidthPt,
-      height: pageHeightPt,
-    });
+    if (blob.size > file.size * 3 && blob.size > 5 * 1024 * 1024) {
+      warnings.push({
+        code: "output-large",
+        detail:
+          "The redacted PDF is much larger than the original, because every page is rebuilt as a flattened image.",
+      });
+    }
 
-    page.cleanup();
+    return { blob, summary: mergeSummaries(pageSummaries), warnings };
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
-
-  const outBytes = await outDoc.save();
-  const blob = new Blob([new Uint8Array(outBytes)], { type: "application/pdf" });
-  return { blob, summary: mergeSummaries(pageSummaries) };
 }
