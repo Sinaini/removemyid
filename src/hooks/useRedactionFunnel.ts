@@ -12,7 +12,14 @@ import {
 } from "../lib/files/download";
 import { ALL_CATEGORIES, defaultRedactionOptions } from "../lib/redaction/options";
 import { trackEvent } from "../lib/analytics";
-import type { RedactionOptions, RedactionSummary, UploadedFile } from "../types";
+import { generateId } from "../lib/id";
+import type {
+  RedactionOptions,
+  RedactionSummary,
+  ReplacementMode,
+  ManualSpan,
+  UploadedFile,
+} from "../types";
 
 interface PendingDownload {
   blob: Blob;
@@ -45,6 +52,9 @@ export function useRedactionFunnel() {
   const [, setExcludedIds] = useState<Set<string>>(new Set());
   const [warnings, setWarnings] = useState<RedactionWarning[]>([]);
   const [staleOutput, setStaleOutput] = useState(false);
+  const [replacementMode, setReplacementModeState] = useState<ReplacementMode>("redacted");
+  const [reviewText, setReviewText] = useState<string | null>(null);
+  const [manualSpans, setManualSpans] = useState<ManualSpan[]>([]);
   const { redact } = useRedactionWorker();
 
   // A preview URL has to outlive the click that opened it (the user is reading
@@ -55,6 +65,7 @@ export function useRedactionFunnel() {
   // Authoritative copies of state that is read inside async callbacks, where a
   // render-time snapshot would be stale.
   const excludedRef = useRef<Set<string>>(new Set());
+  const manualRef = useRef<ManualSpan[]>([]);
   const runIdRef = useRef(0);
   useEffect(() => {
     return () => {
@@ -80,7 +91,20 @@ export function useRedactionFunnel() {
     excludedRef.current = new Set();
     setWarnings([]);
     setStaleOutput(false);
+    setReplacementModeState("redacted");
+    setReviewText(null);
+    setManualSpans([]);
+    manualRef.current = [];
   };
+
+  // Derived from the file itself: PDFs and images are rebuilt as flattened
+  // rasters, so there is no text in the output to substitute a label or
+  // pseudonym into, and no reviewable text layer to show inline.
+  const fileName = uploadedFile?.file.name ?? "";
+  const isRasterOutput =
+    /.(pdf|jpe?g|png|webp|gif)$/i.test(fileName) ||
+    (uploadedFile?.file.type ?? "").startsWith("image/") ||
+    uploadedFile?.file.type === "application/pdf";
 
   const handleFileSelected = (file: UploadedFile) => {
     setUploadedFile(file);
@@ -91,7 +115,9 @@ export function useRedactionFunnel() {
     file: UploadedFile,
     opts: RedactionOptions,
     excluded: Set<string>,
-    silent: boolean
+    silent: boolean,
+    mode: ReplacementMode,
+    manual: readonly ManualSpan[]
   ) => {
     // A generation token. Every state write below is gated on this run still
     // being the current one, so a slow earlier run can no longer overwrite a
@@ -124,6 +150,7 @@ export function useRedactionFunnel() {
         // real bytes instead of lying about them.
         extension?: string;
         warnings?: RedactionWarning[];
+        sourceText?: string;
       };
 
       // Dispatch on what the file actually is, not on the browser's MIME guess.
@@ -137,14 +164,18 @@ export function useRedactionFunnel() {
 
       if (sniffed.formatId === "pdf") {
         const { redactPdfFile } = await import("../lib/pdf/redactPdf");
-        result = await redactPdfFile(file.file, opts, excluded);
+        result = await redactPdfFile(file.file, opts, excluded, {
+          replacementMode: mode,
+        });
       } else if (sniffed.formatId === "image") {
         const { redactImageFile } = await import("../lib/images/redactImage");
-        result = await redactImageFile(file.file, opts, excluded);
+        result = await redactImageFile(file.file, opts, excluded, {
+          replacementMode: mode,
+        });
       } else {
         result = await redactTextFile(
           file.file,
-          (text) => redact(text, opts, excludedIdList),
+          (text) => redact(text, opts, excludedIdList, mode, manual),
           sniffed.formatId,
           sniffed.mimeType
         );
@@ -156,6 +187,7 @@ export function useRedactionFunnel() {
 
       if (!isCurrent()) return;
 
+      setReviewText(result.sourceText ?? null);
       setSummary(result.summary);
       setWarnings(result.warnings ?? []);
       setPendingDownload({ blob: result.blob, filename });
@@ -222,7 +254,14 @@ export function useRedactionFunnel() {
     setExcludedIds(new Set());
     excludedRef.current = new Set();
     navigate("/results");
-    void runRedaction(uploadedFile, options, new Set(), false);
+    void runRedaction(
+      uploadedFile,
+      options,
+      new Set(),
+      false,
+      replacementMode,
+      manualRef.current
+    );
   };
 
   const handleRetry = () => {
@@ -230,23 +269,108 @@ export function useRedactionFunnel() {
     trackEvent("retry_clicked");
     setExcludedIds(new Set());
     excludedRef.current = new Set();
-    void runRedaction(uploadedFile, options, new Set(), false);
+    void runRedaction(
+      uploadedFile,
+      options,
+      new Set(),
+      false,
+      replacementMode,
+      manualRef.current
+    );
   };
 
-  const handleRemoveItem = (id: string) => {
+  /**
+   * Un-redact or re-redact one occurrence.
+   *
+   * Replaces the old one-way "remove": the previous UI had an X that could never
+   * be undone, so a mis-click meant starting the whole file over.
+   */
+  const handleToggleItem = (id: string) => {
     if (!uploadedFile) return;
-    const category = summary?.items.find((item) => item.id === id)?.category;
-    trackEvent("item_excluded", { category: category ?? "unknown" });
 
-    // Built from the ref, not from the `excludedIds` value captured in this
-    // render. Two clicks dispatched before React re-renders both used to read the
-    // same stale snapshot, so the first exclusion was silently discarded and the
-    // item reappeared redacted with no error.
+    // Built from the ref, not from a value captured in this render. Two clicks
+    // dispatched before React re-renders both used to read the same stale
+    // snapshot, so the first change was silently discarded.
     const next = new Set(excludedRef.current);
-    next.add(id);
+    const wasExcluded = next.has(id);
+    if (wasExcluded) next.delete(id);
+    else next.add(id);
+
     excludedRef.current = next;
     setExcludedIds(next);
-    void runRedaction(uploadedFile, options, next, true);
+
+    const category = summary?.items.find((item) => item.id === id)?.category;
+    trackEvent("review_item_toggled", {
+      category: category ?? "unknown",
+      to: wasExcluded ? "redacted" : "kept",
+    });
+
+    void runRedaction(
+      uploadedFile,
+      options,
+      next,
+      true,
+      replacementMode,
+      manualRef.current
+    );
+  };
+
+  /**
+   * Redact something the detectors missed. This is the gap the review screen
+   * exists to close: previously, if detection missed a value there was no way
+   * for the user to remove it at all.
+   */
+  const handleAddManual = (span: Omit<ManualSpan, "id">) => {
+    if (!uploadedFile || !span.text.trim()) return;
+
+    const next = [...manualRef.current, { ...span, id: generateId() }];
+    manualRef.current = next;
+    setManualSpans(next);
+
+    trackEvent("manual_redaction_added", { scope: span.scope });
+    void runRedaction(
+      uploadedFile,
+      options,
+      excludedRef.current,
+      true,
+      replacementMode,
+      next
+    );
+  };
+
+  /** Undo a manual redaction by deleting the span, not by excluding its match. */
+  const handleRemoveManual = (id: string) => {
+    if (!uploadedFile) return;
+    const next = manualRef.current.filter((span) => span.id !== id);
+    manualRef.current = next;
+    setManualSpans(next);
+    void runRedaction(
+      uploadedFile,
+      options,
+      excludedRef.current,
+      true,
+      replacementMode,
+      next
+    );
+  };
+
+  /**
+   * Changing how values are rendered re-runs the redaction silently: the summary
+   * stays on screen while the file is rebuilt, so the picker feels immediate.
+   */
+  const setReplacementMode = (mode: ReplacementMode) => {
+    if (mode === replacementMode) return;
+    setReplacementModeState(mode);
+    trackEvent("replacement_mode_changed", { mode });
+    if (!uploadedFile || !summary) return;
+    void runRedaction(
+      uploadedFile,
+      options,
+      excludedRef.current,
+      true,
+      mode,
+      manualRef.current
+    );
   };
 
   const handleDownload = () => {
@@ -273,12 +397,19 @@ export function useRedactionFunnel() {
     summary,
     warnings,
     staleOutput,
+    replacementMode,
+    setReplacementMode,
+    isRasterOutput,
+    reviewText,
+    manualSpans,
+    handleToggleItem,
+    handleAddManual,
+    handleRemoveManual,
     clearFile,
     resetFunnel,
     handleFileSelected,
     handleSubmitOptions,
     handleRetry,
-    handleRemoveItem,
     handleDownload,
     handlePreview,
   };

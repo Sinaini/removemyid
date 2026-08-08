@@ -1,4 +1,4 @@
-import { Download, Eye, RotateCcw, ShieldCheck, X } from "lucide-react";
+import { Download, Eye, EyeOff, RotateCcw, ShieldCheck } from "lucide-react";
 import type { RedactionSummary, PIICategory, RedactedItem } from "../../types";
 import { CATEGORY_META, CATEGORY_ORDER, categoryLabel } from "../../lib/redaction/categoryMeta";
 
@@ -37,7 +37,8 @@ export default function RedactionSummaryPanel({
   onRetry,
 }: RedactionSummaryPanelProps) {
   const actionsDisabled = isUpdating || staleOutput;
-  const grouped = groupItems(summary.items);
+  const grouped = groupItems(summary.items.filter((item) => !item.kept));
+  const keptItems = summary.items.filter((item) => item.kept);
   const categories = CATEGORY_ORDER.filter((category) => summary.counts[category] > 0);
 
   return (
@@ -54,7 +55,7 @@ export default function RedactionSummaryPanel({
             <p className="text-xs text-ink-400">
               {isUpdating
                 ? "Updating…"
-                : "Here's exactly what was replaced with [REDACTED]. Remove an item to keep it un-redacted."}
+                : "Here's exactly what was replaced. Remove an item to keep it un-redacted."}
             </p>
           </div>
         </div>
@@ -106,15 +107,16 @@ export default function RedactionSummaryPanel({
                       >
                         <span className="truncate text-ink-300">{item.text}</span>
                         <span className="shrink-0 text-ink-600">→</span>
-                        <span className="shrink-0 text-signal-400">[REDACTED]</span>
+                        <span className="shrink-0 text-signal-400">{item.replacement}</span>
                         <button
                           type="button"
                           onClick={() => onRemoveItem(item.id)}
                           disabled={actionsDisabled}
+                          aria-label={`Keep ${item.text} visible`}
                           title="Keep this un-redacted"
                           className="ml-auto shrink-0 rounded p-0.5 text-ink-500 transition hover:bg-ink-800 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <X className="h-3.5 w-3.5" strokeWidth={2} />
+                          <EyeOff className="h-3.5 w-3.5" strokeWidth={2} />
                         </button>
                       </li>
                     ))}
@@ -122,6 +124,42 @@ export default function RedactionSummaryPanel({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {keptItems.length > 0 && (
+          // Kept values are listed separately rather than dropped, so the
+          // decision stays visible and reversible — and so it is obvious that
+          // these are still in the downloaded file.
+          <div className="mt-5 border-t border-ink-800 pt-4">
+            <div className="flex items-center gap-2.5 text-sm">
+              <EyeOff className="h-4 w-4 text-warn-400" strokeWidth={2} />
+              <span className="font-medium text-ink-200">Kept visible</span>
+              <span className="rounded-full bg-ink-800 px-2 py-0.5 text-xs font-medium text-ink-300">
+                {keptItems.length}
+              </span>
+            </div>
+            <ul className="mt-2 ml-6 space-y-2">
+              {keptItems.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center gap-2 font-mono text-xs text-ink-400"
+                >
+                  <span className="break-all text-ink-300 line-clamp-2">
+                    {item.text}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveItem(item.id)}
+                    disabled={actionsDisabled}
+                    aria-label={`Redact ${item.text} after all`}
+                    className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-ink-400 transition hover:bg-ink-800 hover:text-ink-50 disabled:opacity-40"
+                  >
+                    Redact
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

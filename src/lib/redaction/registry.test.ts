@@ -5,6 +5,7 @@ import {
   GROUP_ORDER,
   GROUP_LABELS,
   categoriesInGroup,
+  CONFIGURABLE_CATEGORIES,
 } from "./registry";
 import { defaultRedactionOptions } from "./options";
 import { emptySummary } from "./redact";
@@ -63,9 +64,30 @@ describe("category registry", () => {
     }
   });
 
-  it("covers every category exactly once across the groups", () => {
+  it("covers every configurable category exactly once across the groups", () => {
     const grouped = GROUP_ORDER.flatMap(categoriesInGroup);
-    expect(grouped.sort()).toEqual([...ALL_CATEGORIES].sort());
+    expect(grouped.sort()).toEqual([...CONFIGURABLE_CATEGORIES].sort());
+  });
+
+  // User-authored categories have nothing to switch on, so offering them as a
+  // checkbox would be meaningless — and turning `manual` off would silently
+  // discard spans the user marked by hand.
+  it("hides user-authored categories from the configure screen", () => {
+    expect(CONFIGURABLE_CATEGORIES).not.toContain("manual");
+    expect(ALL_CATEGORIES).toContain("manual");
+  });
+
+  it("gives user-authored categories the highest priority", () => {
+    for (const category of ALL_CATEGORIES) {
+      if (CATEGORY_DEFS[category].userAuthored) continue;
+      expect(CATEGORY_DEFS.manual.priority, category).toBeLessThan(
+        CATEGORY_DEFS[category].priority
+      );
+    }
+  });
+
+  it("does not let an allowlist suppress a user-authored category", () => {
+    expect(CATEGORY_DEFS.manual.suppressible).toBe(false);
   });
 });
 

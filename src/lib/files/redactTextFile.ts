@@ -1,4 +1,5 @@
 import type { RedactionResult, RedactionSummary } from "../../types";
+import { matchId, REDACTED } from "../redaction/redact";
 import { decodeTextFile, encodeText, type TextEncodingId } from "./decodeText";
 import { parseCsv, csvTextView, serializeCsv, type CsvDoc } from "./csv";
 import {
@@ -12,6 +13,12 @@ export interface ProcessedTextFile {
   blob: Blob;
   summary: RedactionSummary;
   warnings: { code: string; detail: string }[];
+  /**
+   * The decoded source text the detectors ran on. Surfaced so the review screen
+   * can show the document with matches highlighted in place, and so a manual
+   * selection maps to the same offsets the pipeline uses.
+   */
+  sourceText: string;
 }
 
 /** Runs detection on a string. Supplied by the caller so it can go via the worker. */
@@ -37,12 +44,15 @@ export async function redactTextFile(
   const type = mimeType || file.type || "text/plain";
 
   if (formatId === "csv") {
-    return { ...(await redactCsv(decoded.text, redact, decoded.hadBom, type)), warnings };
+    const csv = await redactCsv(decoded.text, redact, decoded.hadBom, type);
+    // The review text for a CSV is the flattened cell view the detectors saw,
+    // not the raw file — offsets must line up with the matches.
+    return { ...csv, warnings };
   }
 
   const { redactedText, summary } = await redact(decoded.text);
   const blob = new Blob([encodeText(redactedText, decoded.hadBom)], { type });
-  return { blob, summary, warnings };
+  return { blob, summary, warnings, sourceText: decoded.text };
 }
 
 /**
@@ -56,11 +66,20 @@ async function redactCsv(
   redact: Redactor,
   hadBom: boolean,
   mimeType: string
-): Promise<{ blob: Blob; summary: RedactionSummary }> {
+): Promise<{ blob: Blob; summary: RedactionSummary; sourceText: string }> {
   const doc = parseCsv(text);
   const view = csvTextView(doc);
 
   const { summary, matches } = await redact(view.text);
+
+  // Replacements come from the summary rather than being hardcoded, so the
+  // chosen mode (labels, pseudonyms) reaches the file and the panel and the
+  // output cannot disagree.
+  // Kept items are listed but not redacted, so they must not contribute a
+  // replacement here.
+  const replacements = new Map(
+    summary.items.filter((item) => !item.kept).map((item) => [item.id, item.replacement])
+  );
 
   // Build each affected cell's new value from its own matches. Working per cell
   // keeps offsets local, so a match spanning two cells (a name split across a
@@ -68,11 +87,12 @@ async function redactCsv(
   const perCell = new Map<number, { value: string; cuts: { start: number; end: number; with: string }[] }>();
 
   for (const match of matches) {
+    const replacement = replacements.get(matchId(match)) ?? REDACTED;
     for (const span of spansForMatch(view, doc, match.start, match.end)) {
       const cell = doc.cells[span.ref];
       if (!cell) continue;
       const entry = perCell.get(span.ref) ?? { value: cell.value, cuts: [] };
-      entry.cuts.push({ start: span.fragStart, end: span.fragEnd, with: REPLACEMENT });
+      entry.cuts.push({ start: span.fragStart, end: span.fragEnd, with: replacement });
       perCell.set(span.ref, entry);
     }
   }
@@ -86,10 +106,10 @@ async function redactCsv(
   return {
     blob: new Blob([encodeText(output, hadBom)], { type: mimeType }),
     summary,
+    sourceText: view.text,
   };
 }
 
-const REPLACEMENT = "[REDACTED]";
 
 /**
  * Which cells a match should actually redact.

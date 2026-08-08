@@ -1,10 +1,12 @@
 import { AlertCircle, Loader2, Star } from "lucide-react";
-import type { RedactionSummary } from "../../types";
+import type { ManualSpan, RedactionSummary, ReplacementMode } from "../../types";
 import StepLayout from "../layout/StepLayout";
 import RedactionSummaryPanel from "../landing/RedactionSummaryPanel";
 import FeedbackButton from "../shared/FeedbackButton";
 import ShareButton from "../shared/ShareButton";
 import WarningPanel from "../shared/WarningPanel";
+import ReplacementModePicker from "../shared/ReplacementModePicker";
+import ReviewPanel from "../review/ReviewPanel";
 import { trackEvent } from "../../lib/analytics";
 import type { RedactionWarning } from "../../hooks/useRedactionFunnel";
 
@@ -16,6 +18,13 @@ interface ResultsPageProps {
   summary: RedactionSummary | null;
   warnings: readonly RedactionWarning[];
   staleOutput: boolean;
+  replacementMode: ReplacementMode;
+  isRasterOutput: boolean;
+  onReplacementModeChange: (mode: ReplacementMode) => void;
+  reviewText: string | null;
+  manualSpans: readonly ManualSpan[];
+  onAddManual: (span: Omit<ManualSpan, "id">) => void;
+  onRemoveManual: (id: string) => void;
   onDownload: () => void;
   onPreview: () => void;
   onRetry: () => void;
@@ -32,6 +41,13 @@ export default function ResultsPage({
   summary,
   warnings,
   staleOutput,
+  replacementMode,
+  isRasterOutput,
+  onReplacementModeChange,
+  reviewText,
+  manualSpans,
+  onAddManual,
+  onRemoveManual,
   onDownload,
   onPreview,
   onRetry,
@@ -92,6 +108,26 @@ export default function ResultsPage({
             onReset={onStartOver}
             onRemoveItem={onRemoveItem}
             onRetry={onRetry}
+          />
+
+          {reviewText !== null && (
+            <ReviewPanel
+              text={reviewText}
+              summary={summary}
+              manualSpans={manualSpans}
+              isUpdating={isUpdating}
+              onToggleItem={onRemoveItem}
+              onAddManual={onAddManual}
+              onRemoveManual={onRemoveManual}
+            />
+          )}
+
+          <ReplacementModePicker
+            mode={replacementMode}
+            onChange={onReplacementModeChange}
+            isRasterOutput={isRasterOutput}
+            disabled={isUpdating}
+            summary={summary}
           />
 
           <WarningPanel warnings={warnings} />

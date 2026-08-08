@@ -22,6 +22,13 @@ export default function ResultsRoute({ funnel }: ResultsRouteProps) {
       summary={funnel.summary}
       warnings={funnel.warnings}
       staleOutput={funnel.staleOutput}
+      replacementMode={funnel.replacementMode}
+      isRasterOutput={funnel.isRasterOutput}
+      onReplacementModeChange={funnel.setReplacementMode}
+      reviewText={funnel.reviewText}
+      manualSpans={funnel.manualSpans}
+      onAddManual={funnel.handleAddManual}
+      onRemoveManual={funnel.handleRemoveManual}
       onDownload={funnel.handleDownload}
       onPreview={funnel.handlePreview}
       onRetry={funnel.handleRetry}
@@ -30,7 +37,7 @@ export default function ResultsRoute({ funnel }: ResultsRouteProps) {
         navigate("/");
       }}
       onBack={() => navigate("/redact")}
-      onRemoveItem={funnel.handleRemoveItem}
+      onRemoveItem={funnel.handleToggleItem}
     />
   );
 }

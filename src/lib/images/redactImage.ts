@@ -4,8 +4,16 @@ import { decodeImage } from "./decodeImage";
 import { encodeCanvas } from "./encodeImage";
 import { createClampedCanvas, releaseCanvas } from "./canvas";
 import { throwIfAborted } from "../pipeline/abort";
-import { findAllMatches, summarize, excludeMatches } from "../redaction/redact";
-import type { RedactionOptions, RedactionSummary } from "../../types";
+import {
+  findAllMatches,
+  summarize,
+  excludeMatches,
+} from "../redaction/redact";
+import type {
+  RedactionOptions,
+  RedactionSummary,
+  ReplacementMode,
+} from "../../types";
 
 export type ImageWarningCode = "downscaled" | "reencoded" | "low-confidence";
 
@@ -25,6 +33,11 @@ export interface ProcessedImage {
 export interface RedactImageOptions {
   signal?: AbortSignal;
   onProgress?: (event: { stage: string }) => void;
+  /**
+   * Affects the summary only — the output is a flattened image with solid black
+   * boxes, so there is no text in the file to substitute.
+   */
+  replacementMode?: ReplacementMode;
 }
 
 /** Mean OCR confidence below this means the recognised text is unreliable. */
@@ -36,7 +49,7 @@ export async function redactImageFile(
   excludedIds?: ReadonlySet<string>,
   runOptions: RedactImageOptions = {}
 ): Promise<ProcessedImage> {
-  const { signal, onProgress } = runOptions;
+  const { signal, onProgress, replacementMode: mode = "redacted" } = runOptions;
   const warnings: ImageWarning[] = [];
 
   onProgress?.({ stage: "Reading the image" });
@@ -88,7 +101,7 @@ export async function redactImageFile(
     }
 
     const matches = excludeMatches(findAllMatches(text, options), excludedIds);
-    const summary = summarize(matches, undefined, "ocr");
+    const summary = summarize(matches, { source: "ocr", mode });
 
     ctx.fillStyle = "#000000";
     for (const match of matches) {

@@ -12,11 +12,16 @@ import { createClampedCanvas, releaseCanvas } from "../images/canvas";
 import { throwIfAborted } from "../pipeline/abort";
 import {
   findAllMatches,
-  summarize,
+  createRedactionContext,
   mergeSummaries,
   excludeMatches,
 } from "../redaction/redact";
-import type { PIIMatch, RedactionOptions, RedactionSummary } from "../../types";
+import type {
+  PIIMatch,
+  RedactionOptions,
+  RedactionSummary,
+  ReplacementMode,
+} from "../../types";
 
 const RENDER_SCALE = 2;
 
@@ -41,6 +46,13 @@ export interface ProcessedPdf {
 export interface RedactPdfOptions {
   signal?: AbortSignal;
   onProgress?: (event: { stage: string; current: number; total: number }) => void;
+  /**
+   * Affects the summary only. The output PDF is a flattened image with solid
+   * black boxes drawn on it — there is no text in the file to substitute, so a
+   * label or pseudonym cannot appear there. The UI has to say this plainly
+   * rather than letting the setting look like it did nothing.
+   */
+  replacementMode?: ReplacementMode;
 }
 
 /**
@@ -58,7 +70,11 @@ export async function redactPdfFile(
   excludedIds?: ReadonlySet<string>,
   runOptions: RedactPdfOptions = {}
 ): Promise<ProcessedPdf> {
-  const { signal, onProgress } = runOptions;
+  const { signal, onProgress, replacementMode = "redacted" } = runOptions;
+
+  // Created once for the whole document, before the page loop, so a pseudonym
+  // means the same person on page 1 and page 9.
+  const context = createRedactionContext(replacementMode);
 
   const bytes = await file.arrayBuffer();
   const loadingTask = getDocument({ data: bytes });
@@ -129,7 +145,8 @@ export async function redactPdfFile(
             "text"
           );
           pageTextMatches = matches;
-          pageSummaries.push(summarize(matches, pageNum, "text"));
+          context.register(matches);
+          pageSummaries.push(context.summarize(matches, pageNum, "text"));
 
           let anyWholeRun = false;
           for (const match of matches) {
@@ -195,7 +212,8 @@ export async function redactPdfFile(
           const novel = matches.filter(
             (m) => !alreadyReported.has(reportKey(m.category, m.text))
           );
-          pageSummaries.push(summarize(novel, pageNum, "ocr"));
+          context.register(novel);
+          pageSummaries.push(context.summarize(novel, pageNum, "ocr"));
 
           warnings.push({
             code: "scanned-page",

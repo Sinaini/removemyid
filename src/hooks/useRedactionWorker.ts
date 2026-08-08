@@ -4,6 +4,8 @@ import type {
   RedactionRequest,
   RedactionResponse,
   RedactionResult,
+  ReplacementMode,
+  ManualSpan,
 } from "../types";
 import { generateId } from "../lib/id";
 import { CancelledError } from "../lib/pipeline/abort";
@@ -68,7 +70,9 @@ export function useRedactionWorker() {
     (
       text: string,
       options?: RedactionOptions,
-      excludedIds?: string[]
+      excludedIds?: string[],
+      replacementMode?: ReplacementMode,
+      manualSpans?: readonly ManualSpan[]
     ): Promise<RedactionResult> => {
       return new Promise((resolve, reject) => {
         const worker = workerRef.current;
@@ -80,7 +84,14 @@ export function useRedactionWorker() {
         const requestId = generateId();
         pendingRef.current.set(requestId, { resolve, reject });
 
-        const request: RedactionRequest = { requestId, text, options, excludedIds };
+        const request: RedactionRequest = {
+          requestId,
+          text,
+          options,
+          excludedIds,
+          replacementMode,
+          manualSpans: manualSpans ? [...manualSpans] : undefined,
+        };
         worker.postMessage(request);
       });
     },

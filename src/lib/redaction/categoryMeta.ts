@@ -8,6 +8,16 @@ import {
   Calendar,
   Cake,
   Hash,
+  Link,
+  Landmark,
+  Building2,
+  BookUser,
+  Car,
+  KeyRound,
+  Network,
+  Router,
+  Mailbox,
+  Highlighter,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PIICategory } from "../../types";
@@ -17,11 +27,22 @@ import { ALL_CATEGORIES, CATEGORY_DEFS } from "./registry";
 // imported by the Web Worker (see tsconfig.worker.json), and putting a
 // lucide-react value in it would pull React into the worker bundle.
 export const CATEGORY_ICONS: Record<PIICategory, LucideIcon> = {
+  manual: Highlighter,
   email: Mail,
   phone: Phone,
+  url: Link,
   creditCard: CreditCard,
+  iban: Landmark,
+  routingNumber: Building2,
   accountNumber: Hash,
   ssn: Fingerprint,
+  nationalId: BookUser,
+  passport: BookUser,
+  driversLicence: Car,
+  secret: KeyRound,
+  ipAddress: Network,
+  macAddress: Router,
+  postalCode: Mailbox,
   person: User,
   place: MapPin,
   date: Calendar,
